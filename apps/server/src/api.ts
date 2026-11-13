@@ -237,9 +237,10 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       if (res.repo && !(await store.hasGitSettings(projectId))) {
         const r = res.repo;
         const base = r.currentBranch && r.remoteBranches.includes(r.currentBranch) ? r.currentBranch : r.defaultBranch;
-        await store.updateProject(projectId, {
-          git: { ...DEFAULT_GIT_SETTINGS, flow: r.github && r.ghReady ? 'pr' : 'local', baseBranch: base ?? null },
-        });
+        // Remote with CI on GitHub: pull requests. Remote without CI (a new project): merge and
+        // push. No remote: merge locally.
+        const flow = !r.remoteUrl ? 'local' : r.github && r.ghReady && r.ci ? 'pr' : 'push';
+        await store.updateProject(projectId, { git: { ...DEFAULT_GIT_SETTINGS, flow, baseBranch: base ?? null } });
       }
     } catch (err) {
       await store.updateProject(projectId, { status: 'error', error: (err as Error).message });
@@ -644,7 +645,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     if (card.status === 'done') throw new HttpError(409, 'Thẻ này đã được hoàn tất rồi.');
     const b = await body<{ action?: FinishAction; commitMessage?: string }>(c);
     const action = b.action ?? 'commit';
-    if (!['merge_pr', 'commit', 'pr', 'merge', 'discard'].includes(action)) throw new HttpError(400, 'Hành động không hợp lệ.');
+    if (!['merge_push', 'merge_pr', 'commit', 'pr', 'merge', 'discard'].includes(action)) throw new HttpError(400, 'Hành động không hợp lệ.');
     const project = await ownProject(c, card.projectId);
     const res = await hub.request(
       deviceId,
@@ -698,7 +699,7 @@ const REF = /^(?!-)(?!\/)(?!.*\.\.)(?!.*\/\/)[A-Za-z0-9._\/-]+$/;
 
 /** Validate git settings from the browser; branch names must be safe to pass to git. */
 function parseGitSettings(b: Partial<GitSettings>): GitSettings {
-  const flow = b.flow === 'pr' ? 'pr' : 'local';
+  const flow = b.flow === 'pr' || b.flow === 'push' ? b.flow : 'local';
   const baseBranch = typeof b.baseBranch === 'string' && b.baseBranch.trim() ? b.baseBranch.trim() : null;
   if (baseBranch && (baseBranch.length > 100 || !REF.test(baseBranch) || baseBranch.endsWith('/') || baseBranch.endsWith('.lock'))) {
     throw new HttpError(400, 'Tên nhánh gốc không hợp lệ.');

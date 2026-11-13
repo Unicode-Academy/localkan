@@ -43,11 +43,27 @@ Khi giao việc, nhiệm vụ gửi cho agent có thêm:
 
 Khi chọn "Làm tiếp từ thẻ…" mà nhánh của thẻ đó chưa merge, worktree mới sẽ bắt đầu từ nhánh đó và diff chỉ hiện phần việc mới. Muốn chia sẻ ghi chú qua git thì bỏ các dòng `.localkan/...` trong `.git/info/exclude` rồi commit.
 
-## Git: Pull Request trên GitHub hoặc merge cục bộ
+## Git: Pull Request, Merge rồi push, hoặc merge cục bộ
 
-Mỗi bảng chọn một cách đưa việc đã duyệt vào repo, ở nút **⑂** trên thanh trên cùng (trên điện thoại: menu ☰ → ⑂). Bảng mới có remote GitHub (và máy có `gh` đã đăng nhập) tự chọn **Pull Request**, với nhánh gốc là nhánh đang mở trong thư mục dự án. Các bảng có từ trước giữ **merge cục bộ** cho tới khi bạn đổi.
+Mỗi bảng chọn một cách đưa việc đã duyệt vào repo, ở nút **⑂** trên thanh trên cùng (trên điện thoại: menu ☰ → ⑂):
 
-**Luồng Pull Request** (khớp với quy trình nhánh → PR → merge → pipeline tự deploy):
+| Cách | Hợp với | Khi bạn duyệt |
+| :-- | :-- | :-- |
+| **Pull Request** | Repo GitHub đã có CI/CD | Merge PR trên GitHub; pipeline chạy từ đó |
+| **Merge rồi push** | Repo có remote nhưng chưa có CI/CD (dự án mới) | Merge vào nhánh gốc mới nhất trên origin và push thẳng lên, không mở PR |
+| **Merge cục bộ** | Repo chưa có remote | Merge vào nhánh đang mở trong thư mục dự án, không push |
+
+Bảng mới tự chọn theo repo: có remote GitHub, có CI (`.github/workflows`, `.gitlab-ci.yml`…) và có `gh` đã đăng nhập thì chọn Pull Request; có remote mà chưa có CI thì chọn Merge rồi push; chưa có remote thì chọn merge cục bộ. Nhánh gốc là nhánh đang mở trong thư mục dự án. Các bảng có từ trước giữ merge cục bộ cho tới khi bạn đổi. Khi dự án mới có thêm CI/CD, chỉ cần vào ⑂ đổi sang Pull Request.
+
+**Merge rồi push:** việc vẫn chạy trên nhánh riêng `feature/…` lấy từ `origin/<nhánh gốc>` mới nhất. Khi bạn bấm **⑂ Merge & push**, Localkan:
+1. Lấy `origin/<nhánh gốc>` mới nhất.
+2. Tạo commit merge `Merge <nhánh>: <tiêu đề>` ngay trong worktree của việc, nên không đụng thư mục dự án.
+3. Push nhánh gốc lên origin (chỉ fast-forward, không bao giờ ghi đè).
+4. Dọn worktree và nhánh, rồi cập nhật nhánh gốc trong thư mục dự án nếu nó đang mở và sạch.
+
+Nếu xung đột, hoặc origin vừa có commit mới, Localkan không push gì, đưa worktree về nguyên trạng và báo cách xử lý (nhờ agent merge rồi duyệt lại).
+
+**Luồng Pull Request** (khớp với quy trình nhánh → PR → merge → pipeline tự deploy). Nếu repo không có CI, PR vẫn chạy bình thường và phần CI hiện "chưa có CI":
 
 | Bước | Localkan làm gì |
 | :-- | :-- |

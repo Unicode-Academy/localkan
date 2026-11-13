@@ -218,7 +218,8 @@ function Review({
           ? '\n\nCI vẫn đang chạy.'
           : '';
     const what = pr ? `PR #${pr.number}` : 'nhánh này (Localkan sẽ mở PR trước)';
-    if (!confirm(`Merge ${what} vào ${base} trên GitHub? Pipeline của repo sẽ deploy.${ci ? ` (${ci.label})` : ''}${warn}`)) return;
+    const pipeline = pr && pr.checks.total > 0 ? ' CI/CD của repo sẽ chạy từ đó.' : '';
+    if (!confirm(`Merge ${what} vào ${base} trên GitHub?${pipeline}${ci && pr && pr.checks.total > 0 ? ` (${ci.label})` : ''}${warn}`)) return;
     run(() => api.finish(card.id, 'merge_pr', card.title), 'Đã merge PR trên GitHub.');
   };
   const answer = diff ? addedText(diff.patch, '.localkan/answer.md') : null;
@@ -292,7 +293,7 @@ function Review({
         )}
       </section>
 
-      {more && <FinishBox card={card} busy={busy} run={run} onCancel={() => setMore(false)} flow={prFlow ? 'pr' : 'local'} />}
+      {more && <FinishBox card={card} busy={busy} run={run} onCancel={() => setMore(false)} flow={prFlow ? 'pr' : project.git.flow} />}
 
       <div className="m-bottom m-decide">
         <div className="m-row">
@@ -306,6 +307,17 @@ function Review({
           ) : prFlow ? (
             <button className="m-btn big primary" disabled={busy} onClick={mergePr}>
               ⑂ Merge PR
+            </button>
+          ) : project.git.flow === 'push' ? (
+            <button
+              className="m-btn big primary"
+              disabled={busy}
+              onClick={() =>
+                confirm(`Merge vào ${base} (bản mới nhất trên origin) và push lên remote?`) &&
+                run(() => api.finish(card.id, 'merge_push', card.title), `Đã merge và push lên ${base}.`)
+              }
+            >
+              ⑂ Merge &amp; push
             </button>
           ) : (
             <button

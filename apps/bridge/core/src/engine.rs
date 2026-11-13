@@ -555,7 +555,7 @@ impl Engine {
         // begin behind (or conflicting with) work merged since the last pull.
         let mut merge_target = base_ref.clone();
         let mut from = base_ref.clone();
-        if p.git.pr_flow() {
+        if p.git.from_origin() {
             let base = p.git.base_branch.clone().filter(|b| !b.is_empty()).unwrap_or(base_ref.clone());
             merge_target = base.clone();
             match github::fetch(&project.repo_path, &base).await {
@@ -568,7 +568,7 @@ impl Engine {
         }
         let worktree_base = self.parent_base(&project.repo_path, &from, p.parent.as_ref()).await?;
         context::ensure_excluded(&project.repo_path).await;
-        let wanted_branch = p.git.pr_flow().then(|| github::task_branch(&p.git.branch_prefix, &p.card_id, &p.title));
+        let wanted_branch = p.git.from_origin().then(|| github::task_branch(&p.git.branch_prefix, &p.card_id, &p.title));
         let name = match &wanted_branch {
             // Orca turns "/" into "-" in worktree names; the branch is renamed right after.
             Some(b) => b.replace('/', "-"),
@@ -1644,7 +1644,15 @@ impl Engine {
         }
         let mut pr_url: Option<String> = None;
         let mut merged_pr: Option<u64> = None;
+        let mut pushed = false;
         match action {
+            "merge_push" => {
+                if !exists {
+                    bail!("Worktree của thẻ không còn, không merge được.");
+                }
+                self.merge_and_push(&project.repo_path, &wt, &branch, &target, &message).await?;
+                pushed = true;
+            }
             "pr" | "merge_pr" => {
                 if !exists {
                     bail!("Worktree của thẻ không còn, không đẩy được lên GitHub.");
@@ -1706,6 +1714,10 @@ impl Engine {
             let _ = git::raw(&project.repo_path, &["branch", "-D", &branch]).await;
         }
         let mut base_note = String::new();
+        if pushed {
+            let _ = git::raw(&project.repo_path, &["branch", "-D", &branch]).await;
+            base_note = self.update_local_base(&project.repo_path, &target).await;
+        }
         if merged_pr.is_some() {
             let _ = git::raw(&project.repo_path, &["branch", "-D", &branch]).await;
             github::delete_remote_branch(&project.repo_path, &branch).await;
@@ -1734,13 +1746,14 @@ impl Engine {
             "commit" => format!("Không có thay đổi mới để commit; nhánh {branch} được giữ lại."),
             "pr" => format!("Đã mở Pull Request từ nhánh {branch}; merge trên GitHub khi sẵn sàng."),
             "merge_pr" => format!("Đã merge PR #{} vào {target} trên GitHub. {base_note}", merged_pr.unwrap_or(0)).trim().to_string(),
+            "merge_push" => format!("Đã merge {branch} vào {target} và push lên origin. {base_note}").trim().to_string(),
             "merge" => format!("Đã merge {branch} vào {target}."),
             _ => format!("Đã hủy thay đổi và xóa nhánh {branch}."),
         };
         let status = match action {
             "commit" => "committed",
             "pr" => "pr",
-            "merge" | "merge_pr" => "merged",
+            "merge" | "merge_pr" | "merge_push" => "merged",
             _ => "discarded",
         };
         if let Err(e) = context::set_status(&project.repo_path, &card.card_id, status, &now()).await {
@@ -1937,6 +1950,31 @@ impl Engine {
         patch.pr_url = Some(Some(pr.url));
         patch.summary = Some(Some(summary));
         self.emit(patch).await;
+        Ok(())
+    }
+
+    /// Flow "push": merge the task branch into the latest origin/<base> and push that, without
+    /// touching the project folder. Nothing is pushed when the merge conflicts or origin moved.
+    async fn merge_and_push(&self, repo: &str, wt: &str, branch: &str, base: &str, message: &str) -> Result<()> {
+        let on_origin = github::fetch(repo, base).await.is_ok() && git::raw(repo, &["rev-parse", "--verify", "-q", &format!("refs/remotes/origin/{base}")]).await.map(|o| o.ok).unwrap_or(false);
+        // A brand-new remote may not have the base branch yet: start from the local one.
+        let start = if on_origin { format!("origin/{base}") } else { base.to_string() };
+        git::run(wt, &["checkout", "-q", "--detach", &start]).await.with_context(|| format!("không chuyển được sang {start}"))?;
+        let back = || async { let _ = git::raw(wt, &["checkout", "-q", branch]).await; };
+        let out = git::raw(wt, &["merge", "--no-ff", branch, "-m", &format!("Merge {branch}: {message}")]).await?;
+        if !out.ok {
+            let detail = format!("{}{}", out.stdout, out.stderr);
+            let _ = git::raw(wt, &["merge", "--abort"]).await;
+            back().await;
+            if detail.contains("CONFLICT") {
+                bail!("Nhánh xung đột với {start}, chưa push gì. Bấm Yêu cầu sửa và nhờ agent: \"merge {start} vào nhánh này và giải quyết xung đột\", rồi duyệt lại.");
+            }
+            bail!("Merge thất bại: {}", first_line(&detail, 200));
+        }
+        if let Err(e) = github::push_ref(wt, base).await {
+            back().await;
+            bail!("{e:#}. Nếu origin/{base} vừa có commit mới, bấm duyệt lại để Localkan lấy bản mới và merge lại.");
+        }
         Ok(())
     }
 

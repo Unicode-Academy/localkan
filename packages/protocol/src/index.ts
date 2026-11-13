@@ -191,8 +191,10 @@ export interface Project {
 }
 
 /** `pr`: each task gets a branch from origin, a GitHub pull request and CI; merging the PR on
- *  GitHub is what ships it. `local`: merge into the branch checked out in the project folder. */
-export type GitFlow = 'pr' | 'local';
+ *  GitHub is what ships it. `push`: a branch from origin, merged into the base branch and pushed
+ *  straight to origin (no PR; for repos without CI/CD). `local`: merge into the branch checked
+ *  out in the project folder, nothing pushed. */
+export type GitFlow = 'pr' | 'push' | 'local';
 export type MergeMethod = 'squash' | 'merge' | 'rebase';
 
 export interface GitSettings {
@@ -228,6 +230,8 @@ export interface RepoInfo {
   remoteBranches: string[];
   /** GitHub CLI installed and logged in on the bridge machine. */
   ghReady: boolean;
+  /** The repo has a CI/CD config (GitHub Actions, GitLab CI…). */
+  ci: boolean;
 }
 
 /** CI checks of a pull request (GitHub checks and commit statuses). */
@@ -333,11 +337,12 @@ export interface ReviewComment {
  *  prompt it shows (e.g. "Yes, I trust this folder"), falling back to Enter / Esc. */
 export type TerminalKey = 'approve' | 'reject' | 'enter' | 'esc' | 'up' | 'down' | 'tab' | 'interrupt';
 
-/** `merge_pr`: merge the task's pull request on GitHub (your pipeline deploys from there).
+/** `merge_push`: merge into the latest origin/<base> and push it (flow `push`, no PR).
+ *  `merge_pr`: merge the task's pull request on GitHub (a CI/CD pipeline runs from there).
  *  `pr`: open (or mark ready) the pull request and leave the merge to you on GitHub.
  *  `merge`: merge into the branch checked out in the project folder (no push).
  *  `commit`: keep the work on its branch. `discard`: drop it (closes an open PR). */
-export type FinishAction = 'merge_pr' | 'commit' | 'pr' | 'merge' | 'discard';
+export type FinishAction = 'merge_push' | 'merge_pr' | 'commit' | 'pr' | 'merge' | 'discard';
 
 // ---------------------------------------------------------------------------
 // Server <-> bridge wire protocol (JSON over WebSocket)

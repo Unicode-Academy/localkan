@@ -324,10 +324,16 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
           <button
             className="btn ghost"
             onClick={() => setDialog('git')}
-            title={project.git.flow === 'pr' ? `Git: Pull Request vào ${project.git.baseBranch ?? project.baseRef ?? 'main'}` : 'Git: merge cục bộ'}
+            title={
+              project.git.flow === 'pr'
+                ? `Git: Pull Request vào ${project.git.baseBranch ?? project.baseRef ?? 'main'}`
+                : project.git.flow === 'push'
+                  ? `Git: merge rồi push lên ${project.git.baseBranch ?? project.baseRef ?? 'main'}`
+                  : 'Git: merge cục bộ'
+            }
             aria-label="Cài đặt git"
           >
-            ⑂<span className="topbar-label"> {project.git.flow === 'pr' ? 'PR' : 'Git'}</span>
+            ⑂<span className="topbar-label"> {project.git.flow === 'pr' ? 'PR' : project.git.flow === 'push' ? 'Push' : 'Git'}</span>
           </button>
         )}
         <div className="spacer" />

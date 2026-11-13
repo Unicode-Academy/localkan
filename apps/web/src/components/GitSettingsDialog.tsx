@@ -30,6 +30,7 @@ export function GitSettingsDialog({ project, onClose, toasts }: { project: Proje
     a === 'main' || a === 'develop' ? -1 : b === 'main' || b === 'develop' ? 1 : a.localeCompare(b),
   );
   const prBlocked = git.flow === 'pr' && repo && (!repo.github || !repo.ghReady);
+  const pushBlocked = git.flow === 'push' && repo && !repo.remoteUrl;
 
   const save = async () => {
     setSaving(true);
@@ -51,7 +52,7 @@ export function GitSettingsDialog({ project, onClose, toasts }: { project: Proje
           {loading
             ? 'Đang đọc repo trên máy chạy bridge…'
             : repo?.remoteUrl
-              ? `origin: ${repo.remoteUrl}${repo.github ? '' : ' (không phải GitHub)'}`
+              ? `origin: ${repo.remoteUrl}${repo.github ? '' : ' (không phải GitHub)'} · ${repo.ci ? 'có CI/CD' : 'chưa có CI/CD'}`
               : 'Repo chưa có remote origin.'}
           {repo && repo.github && !repo.ghReady && (
             <div className="notice">
@@ -68,8 +69,19 @@ export function GitSettingsDialog({ project, onClose, toasts }: { project: Proje
               <strong>Pull Request trên GitHub</strong>
               <span className="muted small">
                 {' '}
-                — mỗi việc một nhánh lấy từ origin, PR nháp để CI chạy, bấm Merge PR là merge trên GitHub (pipeline của bạn
-                deploy từ đó).
+                — mỗi việc một nhánh lấy từ origin, PR nháp để CI chạy, bấm Merge PR là merge trên GitHub (CI/CD của repo
+                chạy từ đó). Hợp với repo đã có CI/CD.
+              </span>
+            </span>
+          </label>
+          <label className="radio">
+            <input type="radio" name="flow" checked={git.flow === 'push'} onChange={() => set('flow', 'push')} />
+            <span>
+              <strong>Merge rồi push</strong>
+              <span className="muted small">
+                {' '}
+                — mỗi việc một nhánh lấy từ origin; khi duyệt, merge vào nhánh gốc mới nhất và push thẳng lên remote, không mở PR.
+                Hợp với dự án mới chưa có CI/CD.
               </span>
             </span>
           </label>
@@ -82,11 +94,12 @@ export function GitSettingsDialog({ project, onClose, toasts }: { project: Proje
           </label>
         </fieldset>
         {prBlocked && <p className="error-text small">Repo này chưa dùng được luồng PR (cần remote GitHub và GitHub CLI đã đăng nhập).</p>}
+        {pushBlocked && <p className="error-text small">Repo này chưa có remote origin để push.</p>}
 
-        {git.flow === 'pr' && (
+        {git.flow !== 'local' && (
           <>
             <label>
-              Nhánh gốc (việc mới lấy từ đây, PR merge vào đây)
+              {git.flow === 'pr' ? 'Nhánh gốc (việc mới lấy từ đây, PR merge vào đây)' : 'Nhánh gốc (việc mới lấy từ đây, merge và push vào đây)'}
               <select value={base} onChange={(e) => set('baseBranch', e.target.value || null)}>
                 {!branches.includes(base) && base && <option value={base}>{base}</option>}
                 {branches.map((b) => (
@@ -104,6 +117,10 @@ export function GitSettingsDialog({ project, onClose, toasts }: { project: Proje
                 Ví dụ: <code>{(git.branchPrefix || '') + 'them-thanh-toan-stripe-3f2a'}</code>
               </span>
             </label>
+          </>
+        )}
+        {git.flow === 'pr' && (
+          <>
             <label>
               Cách merge PR
               <select value={git.mergeMethod} onChange={(e) => set('mergeMethod', e.target.value as MergeMethod)}>

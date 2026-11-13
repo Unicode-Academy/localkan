@@ -8,6 +8,7 @@ import {
   type CardMode,
   type DiffResult,
   type FinishAction,
+  type GitFlow,
   type LogLine,
   type Project,
   type ReviewComment,
@@ -538,14 +539,15 @@ function ReviewTab({ card, project, busy, run, toasts }: { card: Card; project: 
         </div>
       )}
       {finishing && canReview && (
-        <FinishBox card={card} busy={busy} run={run} onCancel={() => setFinishing(false)} flow={prFlow ? 'pr' : 'local'} />
+        <FinishBox card={card} busy={busy} run={run} onCancel={() => setFinishing(false)} flow={prFlow ? 'pr' : project.git.flow} />
       )}
     </div>
   );
 }
 
 const FINISH: Record<FinishAction, { label: string; hint: string }> = {
-  merge_pr: { label: 'Merge PR trên GitHub', hint: 'Đẩy nhánh, mở PR nếu chưa có, rồi merge trên GitHub; pipeline của repo deploy từ đó.' },
+  merge_push: { label: 'Merge rồi push', hint: 'Merge vào nhánh gốc mới nhất trên origin và push lên remote (không mở PR).' },
+  merge_pr: { label: 'Merge PR trên GitHub', hint: 'Đẩy nhánh, mở PR nếu chưa có, rồi merge trên GitHub (CI/CD của repo, nếu có, chạy từ đó).' },
   pr: { label: 'Chỉ mở Pull Request', hint: 'Đẩy nhánh và mở PR (sẵn sàng review); bạn tự merge trên GitHub.' },
   commit: { label: 'Commit vào nhánh', hint: 'Commit thay đổi vào nhánh của thẻ, dọn worktree, giữ nhánh.' },
   merge: { label: 'Merge cục bộ', hint: 'Commit rồi merge vào nhánh gốc trong thư mục dự án, không push (thư mục phải sạch).' },
@@ -563,10 +565,15 @@ export function FinishBox({
   busy: boolean;
   run: Run;
   onCancel: () => void;
-  flow?: 'pr' | 'local';
+  flow?: GitFlow;
 }) {
-  const order: FinishAction[] = flow === 'pr' ? ['merge_pr', 'pr', 'commit', 'merge', 'discard'] : ['commit', 'pr', 'merge', 'discard'];
-  const [action, setAction] = useState<FinishAction>(card.mode === 'ask' ? 'discard' : flow === 'pr' ? 'merge_pr' : 'commit');
+  const order: FinishAction[] =
+    flow === 'pr'
+      ? ['merge_pr', 'pr', 'commit', 'merge', 'discard']
+      : flow === 'push'
+        ? ['merge_push', 'pr', 'commit', 'merge', 'discard']
+        : ['commit', 'pr', 'merge', 'discard'];
+  const [action, setAction] = useState<FinishAction>(card.mode === 'ask' ? 'discard' : flow === 'local' ? 'commit' : order[0]);
   const [message, setMessage] = useState(card.title);
   return (
     <div className="finish-box">

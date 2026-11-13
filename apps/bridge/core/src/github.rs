@@ -37,7 +37,25 @@ pub async fn repo_info(repo: &str, fetch: bool) -> RepoInfo {
         default_branch,
         remote_branches,
         gh_ready: gh_ready().await,
+        ci: has_ci(repo),
     }
+}
+
+/// A CI/CD config in the repo: GitHub Actions workflows or another common CI file.
+pub fn has_ci(repo: &str) -> bool {
+    let root = std::path::Path::new(repo);
+    let workflows = std::fs::read_dir(root.join(".github/workflows"))
+        .map(|d| {
+            d.flatten().any(|e| {
+                let n = e.file_name().to_string_lossy().to_lowercase();
+                n.ends_with(".yml") || n.ends_with(".yaml")
+            })
+        })
+        .unwrap_or(false);
+    workflows
+        || [".gitlab-ci.yml", "bitbucket-pipelines.yml", ".circleci/config.yml", "azure-pipelines.yml", "Jenkinsfile"]
+            .iter()
+            .any(|f| root.join(f).is_file())
 }
 
 /// `gh` installed and logged in.
@@ -77,6 +95,21 @@ pub async fn push(wt: &str, branch: &str) -> Result<()> {
         .await
         .map_err(|_| anyhow!("git push quá thời gian"))??;
     if !out.ok {
+        bail!("git push thất bại: {}", first_line(&out.stderr));
+    }
+    Ok(())
+}
+
+/// Push the current HEAD to `origin/<branch>` (fast-forward only: never overwrites new commits).
+pub async fn push_ref(wt: &str, branch: &str) -> Result<()> {
+    let out = timed(git::raw(wt, &["push", "origin", &format!("HEAD:refs/heads/{branch}")]))
+        .await
+        .map_err(|_| anyhow!("git push quá thời gian"))??;
+    if !out.ok {
+        let err = out.stderr.to_lowercase();
+        if err.contains("rejected") || err.contains("non-fast-forward") || err.contains("fetch first") {
+            bail!("origin/{branch} đã có commit mới, chưa push");
+        }
         bail!("git push thất bại: {}", first_line(&out.stderr));
     }
     Ok(())

@@ -215,6 +215,11 @@ impl GitSettings {
     pub fn pr_flow(&self) -> bool {
         self.flow == "pr"
     }
+
+    /// Flows that work against the remote: tasks start from a fresh origin/<base>, on a named branch.
+    pub fn from_origin(&self) -> bool {
+        self.flow == "pr" || self.flow == "push"
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -226,6 +231,8 @@ pub struct RepoInfo {
     pub default_branch: Option<String>,
     pub remote_branches: Vec<String>,
     pub gh_ready: bool,
+    /// The repo has a CI/CD config (GitHub Actions, GitLab CI…).
+    pub ci: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

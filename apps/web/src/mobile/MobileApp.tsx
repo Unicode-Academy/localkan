@@ -164,7 +164,7 @@ export function MobileApp({
                     {p.preview?.status === 'running' && ' ●'}
                   </button>
                   <button className="m-btn small" onClick={() => (setMenu(false), setTool({ kind: 'git', projectId: p.id }))}>
-                    ⑂ {p.git.flow === 'pr' ? `PR → ${p.git.baseBranch ?? p.baseRef ?? 'main'}` : 'Git'}
+                    ⑂ {p.git.flow === 'pr' ? `PR → ${p.git.baseBranch ?? p.baseRef ?? 'main'}` : p.git.flow === 'push' ? `Push → ${p.git.baseBranch ?? p.baseRef ?? 'main'}` : 'Git'}
                   </button>
                 </div>
               </div>

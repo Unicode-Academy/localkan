@@ -212,7 +212,7 @@ export function cardPayload(event: CardEventName, card: Card, projectName: strin
   const base = { kind, url: `/#card/${card.id}`, tag: `card-${card.id}` };
   const pr = card.pr;
   if (event === 'pr_merged') {
-    return { ...base, title: `⑂ Đã merge PR: ${card.title}`, body: clip(`${projectName} — pipeline của repo sẽ deploy từ đây.`) };
+    return { ...base, title: `⑂ Đã merge PR: ${card.title}`, body: clip(card.summary ? `${projectName} — ${card.summary}` : projectName) };
   }
   if (event === 'ci_failed' && pr) {
     return {
