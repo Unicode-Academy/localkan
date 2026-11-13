@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Localkan Bridge</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <span class="mark" aria-hidden="true">▦</span>
+      <div>
+        <h1>Localkan Bridge</h1>
+        <p class="muted">Chạy agent qua Orca trên máy này cho bảng Localkan.</p>
+      </div>
+    </header>
+
+    <section id="status" class="card" hidden>
+      <div class="row">
+        <span id="dot" class="dot"></span>
+        <strong id="link">…</strong>
+      </div>
+      <p id="detail" class="muted small"></p>
+      <dl>
+        <dt>Server</dt>
+        <dd id="server">—</dd>
+        <dt>Tên máy</dt>
+        <dd id="device">—</dd>
+        <dt>Orca</dt>
+        <dd id="orca">—</dd>
+        <dt>Agent</dt>
+        <dd id="agents">—</dd>
+        <dt>Dữ liệu cục bộ</dt>
+        <dd id="datadir" class="small">—</dd>
+      </dl>
+      <div class="row">
+        <button id="open-board" class="primary">Mở bảng Kanban</button>
+        <button id="reconnect">Kết nối lại</button>
+        <button id="unpair" class="danger">Gỡ ghép nối</button>
+      </div>
+    </section>
+
+    <form id="pair" class="card" hidden>
+      <h2>Ghép nối với server</h2>
+      <p class="muted small">
+        Trên web Localkan, mở <em>Máy chạy bridge → Tạo mã ghép nối</em>, rồi nhập mã vào đây.
+      </p>
+      <label>Địa chỉ server <input id="server-url" value="http://127.0.0.1:8787" required /></label>
+      <label>Mã ghép nối <input id="code" placeholder="ABCD-EFGH" autocomplete="off" required /></label>
+      <label>Tên máy <input id="name" placeholder="Mặc định: tên máy tính" /></label>
+      <p id="pair-error" class="error small" hidden></p>
+      <button class="primary" id="pair-btn">Ghép nối</button>
+    </form>
+
+    <script src="app.js"></script>
+  </body>
+</html>

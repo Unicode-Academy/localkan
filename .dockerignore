@@ -1,0 +1,19 @@
+# Keep the Docker build context small and free of secrets.
+**/node_modules
+**/dist
+**/.data
+**/.env
+**/.env.*
+!**/.env.example
+**/*.db
+**/*.db-*
+.git
+.DS_Store
+**/.DS_Store
+.claude
+docs
+tools
+# The bridge runs on your computer, not in Docker; only its package.json is needed so the
+# pnpm workspace and lockfile line up.
+apps/bridge/*
+!apps/bridge/package.json

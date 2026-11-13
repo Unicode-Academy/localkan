@@ -1,0 +1,14 @@
+{
+  "name": "@localkan/bridge",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "headless": "cargo run -p localkan-bridge-core --bin lk-bridge --"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4"
+  }
+}

@@ -1,0 +1,54 @@
+# Localkan in Docker: backend (API + WebSockets) and frontend (web UI) on separate ports.
+# Your own reverse proxy (nginx with TLS) sits in front:
+#   https://your-domain/      -> frontend  (FRONTEND_PORT, default 8080)
+#   https://your-domain/api/  -> backend   (BACKEND_PORT, default 8787; WebSockets included)
+# See deploy/nginx/localkan.conf.example.
+#
+#   cp docker.env.example .env        # optional: ports, bind address
+#   docker compose up -d --build
+#
+# The backend reads DATABASE_URL and the other settings from apps/server/.env (the same file
+# as in development). The bridge stays on your computer and pairs with https://your-domain.
+
+name: localkan
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    image: localkan-server
+    restart: unless-stopped
+    env_file:
+      - path: apps/server/.env
+        required: false
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8787"
+      DATA_DIR: /data
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8787}:8787"
+    volumes:
+      - server-data:/data
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: localkan-web
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-8080}:80"
+
+  # Optional local MongoDB instead of Atlas: `docker compose --profile mongo up -d` and set
+  # DATABASE_URL=mongodb://mongo:27017/localkan in apps/server/.env.
+  mongo:
+    image: mongo:8.0
+    profiles: ["mongo"]
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  server-data:
+  mongo-data:

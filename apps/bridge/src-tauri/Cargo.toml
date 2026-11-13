@@ -1,0 +1,17 @@
+[package]
+name = "localkan-bridge"
+description = "Localkan Bridge: drives Orca and coding agents on this machine for the Localkan board"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+localkan-bridge-core = { path = "../core" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tauri = { version = "2.12.5", features = ["tray-icon"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"

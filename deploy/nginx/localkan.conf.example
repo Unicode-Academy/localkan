@@ -1,0 +1,44 @@
+# Localkan: http(s)://localkan.example.com/     -> frontend (127.0.0.1:8080)
+#           http(s)://localkan.example.com/api/ -> backend  (127.0.0.1:8787)
+# Backend WebSockets: /api/ws (web app) and /api/bridge (Localkan Bridge).
+#
+# Plain HTTP here; HTTPS is added by certbot:
+#   sudo certbot --nginx -d localkan.example.com
+
+# WebSocket upgrade. Must be in the http context (files in sites-enabled/ and conf.d/ already are).
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name localkan.example.com;
+
+    # Card images: up to 10 files of 10 MB per upload.
+    client_max_body_size 110m;
+
+    # Backend. No trailing slash after the port: the /api prefix must reach the backend unchanged.
+    location /api/ {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
+        # Some requests wait minutes for the bridge (preview, screenshots); WebSockets stay open.
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+
+    # Frontend: the web app (static files, single-page app).
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

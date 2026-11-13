@@ -1,0 +1,16 @@
+{
+  "name": "localkan",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.16.1",
+  "scripts": {
+    "dev:server": "pnpm --filter @localkan/server dev",
+    "dev:web": "pnpm --filter @localkan/web dev",
+    "build:web": "pnpm --filter @localkan/web build",
+    "start:server": "pnpm --filter @localkan/server start",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}
