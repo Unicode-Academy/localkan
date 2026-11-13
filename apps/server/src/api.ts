@@ -63,7 +63,12 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
   api.onError((err, c) => {
     if (err instanceof HttpError) return c.json({ error: err.message }, err.status as 400);
     if (err instanceof PushError) return c.json({ error: err.message }, 400);
-    if (err instanceof BridgeRequestError) return c.json({ error: err.message, code: err.code }, 502);
+    if (err instanceof BridgeRequestError) {
+      // 5xx only when the bridge cannot be reached; an answer from the bridge saying "not
+      // possible right now" (worktree cleaned up, terminal closed…) is a 409.
+      const status = err.code === 'bridge_offline' ? 503 : err.code === 'timeout' ? 504 : 409;
+      return c.json({ error: err.message, code: err.code }, status);
+    }
     console.error(err);
     return c.json({ error: 'Lỗi máy chủ.' }, 500);
   });

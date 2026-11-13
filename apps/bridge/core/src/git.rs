@@ -106,18 +106,32 @@ async fn merge_base(dir: &str, base: &str) -> String {
 /// edits and untracked files. Read-only: the index is not touched.
 pub async fn diff(dir: &str, base: &str) -> Result<DiffResult> {
     let mb = merge_base(dir, base).await;
-    let mut patch = run(dir, &["diff", "--no-color", "--find-renames", &mb]).await?;
+    diff_spec(dir, &[mb.as_str()], true, base).await
+}
+
+/// Changes between two commits (a finished task: its branch, or the commit that merged it).
+pub async fn diff_commits(dir: &str, from: &str, to: &str, label: &str) -> Result<DiffResult> {
+    diff_spec(dir, &[from, to], false, label).await
+}
+
+/// `git diff <spec>`, with per-file stats; `untracked` adds new files not yet added to git.
+async fn diff_spec(dir: &str, spec: &[&str], untracked: bool, label: &str) -> Result<DiffResult> {
+    let with = |extra: &[&str]| -> Vec<String> { extra.iter().chain(spec.iter()).map(|s| s.to_string()).collect() };
+    let args = with(&["diff", "--no-color", "--find-renames"]);
+    let mut patch = run(dir, &args.iter().map(String::as_str).collect::<Vec<_>>()).await?;
 
     let mut files: Vec<DiffFile> = Vec::new();
     let mut stats: HashMap<String, (u64, u64)> = HashMap::new();
-    for line in run(dir, &["diff", "--numstat", "--find-renames", &mb]).await?.lines() {
+    let numstat = with(&["diff", "--numstat", "--find-renames"]);
+    for line in run(dir, &numstat.iter().map(String::as_str).collect::<Vec<_>>()).await?.lines() {
         let mut parts = line.splitn(3, '\t');
         let (a, d, p) = (parts.next(), parts.next(), parts.next());
         if let (Some(a), Some(d), Some(p)) = (a, d, p) {
             stats.insert(rename_target(p), (a.parse().unwrap_or(0), d.parse().unwrap_or(0)));
         }
     }
-    for line in run(dir, &["diff", "--name-status", "--find-renames", &mb]).await?.lines() {
+    let names = with(&["diff", "--name-status", "--find-renames"]);
+    for line in run(dir, &names.iter().map(String::as_str).collect::<Vec<_>>()).await?.lines() {
         let cols: Vec<&str> = line.split('\t').collect();
         if cols.len() < 2 {
             continue;
@@ -133,7 +147,7 @@ pub async fn diff(dir: &str, base: &str) -> Result<DiffResult> {
         files.push(DiffFile { path, status: status.into(), additions, deletions });
     }
 
-    let untracked = run(dir, &["ls-files", "--others", "--exclude-standard"]).await?;
+    let untracked = if untracked { run(dir, &["ls-files", "--others", "--exclude-standard"]).await? } else { String::new() };
     for path in untracked.lines().filter(|l| !l.is_empty()) {
         // `git diff --no-index` exits 1 when the files differ, which is the expected case.
         let out = raw(dir, &["diff", "--no-color", "--no-index", "--", "/dev/null", path]).await?;
@@ -142,7 +156,7 @@ pub async fn diff(dir: &str, base: &str) -> Result<DiffResult> {
         files.push(DiffFile { path: path.to_string(), status: "untracked".into(), additions, deletions: 0 });
     }
 
-    Ok(DiffResult { base_ref: base.to_string(), files, patch: redact_patch(&patch) })
+    Ok(DiffResult { base_ref: label.to_string(), files, patch: redact_patch(&patch) })
 }
 
 /// numstat prints renames as `old => new` or `dir/{old => new}/file`; keep the new path.

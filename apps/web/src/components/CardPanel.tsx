@@ -171,7 +171,8 @@ export function CardPanel({
             aria-selected={tab === t}
             className={tab === t ? 'on' : ''}
             onClick={() => setTab(t)}
-            disabled={t !== 'task' && (!started || (t === 'preview' && card.status === 'done'))}
+            disabled={t !== 'task' && (!started || (card.status === 'done' && (t === 'preview' || t === 'terminal')))}
+            title={card.status === 'done' && (t === 'preview' || t === 'terminal') ? 'Việc đã xong: worktree và terminal đã được dọn' : undefined}
           >
             {{ task: 'Nhiệm vụ', log: 'Log', diff: 'Diff', preview: 'Xem trước', terminal: 'Terminal' }[t]}
             {t === 'preview' && card.preview?.status === 'running' && ' ●'}

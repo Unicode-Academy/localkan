@@ -1511,11 +1511,42 @@ impl Engine {
 
     async fn diff(&self, card_id: &str) -> Result<Value> {
         let card = self.card(card_id).await?;
-        let wt = card.worktree_path.ok_or_else(|| anyhow!("Thẻ chưa có worktree"))?;
-        if !Path::new(&wt).exists() {
-            bail!("Worktree đã được dọn.");
+        let wt = card.worktree_path.clone().ok_or_else(|| anyhow!("Thẻ chưa có worktree"))?;
+        if Path::new(&wt).exists() {
+            return Ok(serde_json::to_value(git::diff(&wt, &card.base_ref).await?)?);
         }
-        Ok(serde_json::to_value(git::diff(&wt, &card.base_ref).await?)?)
+        // Finished task: the worktree is gone, read the changes back from git history.
+        Ok(serde_json::to_value(self.finished_diff(&card).await?)?)
+    }
+
+    /// Changes of a finished task: its branch if kept, else the commit that merged it (a local
+    /// `Merge <branch>: …` commit, or the squash commit GitHub made for its PR).
+    async fn finished_diff(&self, card: &CardRt) -> Result<DiffResult> {
+        let project = self.project(&card.project_id).await.ok_or_else(|| anyhow!("Không thấy bảng trên máy này."))?;
+        let repo = project.repo_path.as_str();
+        let target = card.merge_target.clone().unwrap_or(card.base_ref.clone());
+        let gone = || anyhow!("Việc đã hoàn tất và nhánh của nó đã được dọn, không còn thay đổi để xem.");
+        let Some(branch) = card.branch.clone() else { return Err(gone()) };
+        if git::branch_exists(repo, &branch).await {
+            let mb = git::run(repo, &["merge-base", &target, &branch]).await.map(|s| s.trim().to_string()).unwrap_or(target.clone());
+            return git::diff_commits(repo, &mb, &branch, &format!("{target} (nhánh {branch})")).await;
+        }
+        let find = |rev: String, grep: String| async move {
+            git::run(repo, &["log", &rev, "--format=%H", "-n", "1", "--fixed-strings", &format!("--grep={grep}")])
+                .await
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        };
+        let mut commit = find("--all".into(), format!("Merge {branch}: ")).await;
+        if commit.is_none() {
+            if let Some(n) = card.pr.as_ref().map(|p| p.number).filter(|n| *n > 0) {
+                let _ = github::fetch(repo, &target).await;
+                commit = find(format!("origin/{target}"), format!("(#{n})")).await;
+            }
+        }
+        let c = commit.ok_or_else(gone)?;
+        git::diff_commits(repo, &format!("{c}^1"), &c, &format!("{target} (commit {})", &c[..c.len().min(8)])).await
     }
 
     async fn screen_of(&self, term: &str) -> Option<Vec<String>> {
@@ -1690,6 +1721,11 @@ impl Engine {
             c.last.waiting = Some(None);
             c.last.pr = Some(None);
             c.publish_pending = false;
+            if merged_pr.is_some() {
+                if let Some(pr) = c.pr.as_mut() {
+                    pr.state = "merged".into();
+                }
+            }
         })
         .await;
 
@@ -1887,7 +1923,7 @@ impl Engine {
             c.active = false;
             c.running = false;
             c.waiting_kind = None;
-            c.pr = None;
+            c.pr = Some(PrInfo { state: "merged".into(), ..pr.clone() });
             c.publish_pending = false;
         })
         .await;
