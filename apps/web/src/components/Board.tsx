@@ -161,6 +161,11 @@ function CardTile({
       <div className="tile-meta">
         <span className={`agent agent-${card.agent}`}>{AGENT_LABELS[card.agent]}</span>
         {card.mode === 'ask' && <span className="tag">Hỏi</span>}
+        {card.repos.length > 0 && (
+          <span className="tag" title={card.repos.map((r) => r.name).join(', ')}>
+            {card.repos.length} repo
+          </span>
+        )}
         {card.pr && card.pr.state === 'open' && (
           <span className={`tag pr-ci ${ciSummary(card.pr).tone}`} title={`PR #${card.pr.number}${card.pr.draft ? ' (nháp)' : ''}`}>
             PR #{card.pr.number} {ciSummary(card.pr).label.split(' ')[0]}

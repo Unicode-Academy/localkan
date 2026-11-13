@@ -2134,3 +2134,43 @@ label {
   gap: 6px;
   overflow-wrap: anywhere;
 }
+
+/* Multi-repo tasks */
+.repo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.repo-list li {
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.repo-list li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.repo-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.repo-name {
+  font-weight: 700;
+}
+.git-repo-section {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.git-repo-section h3 {
+  margin: 0;
+  font-size: 15px;
+}

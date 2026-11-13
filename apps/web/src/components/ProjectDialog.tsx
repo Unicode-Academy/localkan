@@ -12,6 +12,14 @@ function FolderStatus({ info }: { info: FolderInfo }) {
   if (!info.exists) return <p className="folder-status new">Thư mục chưa có: Localkan sẽ tạo mới và git init.</p>;
   if (info.isGitRepo) return <p className="folder-status ok">✓ Repo git</p>;
   if (info.isEmpty) return <p className="folder-status new">Thư mục trống: Localkan sẽ tự git init và tạo commit đầu tiên.</p>;
+  if (info.childRepos?.length) {
+    return (
+      <p className="folder-status ok">
+        ✓ Bảng nhiều repo: {info.childRepos.map((r) => `${r}/`).join(', ')}. Mỗi việc có worktree của từng repo trong cùng một thư
+        mục; thư mục này không cần git init.
+      </p>
+    );
+  }
   return (
     <p className="folder-status warn">
       Thư mục đã có file nhưng chưa phải repo git. Hãy chạy <code>git init && git add -A && git commit -m "Initial commit"</code> trong
@@ -95,7 +103,7 @@ export function ProjectDialog({
     );
   }
 
-  const blocked = info !== null && info.exists && !info.isGitRepo && !info.isEmpty;
+  const blocked = info !== null && info.exists && !info.isGitRepo && !info.isEmpty && !info.childRepos?.length;
 
   return (
     <Dialog title="Bảng mới" onClose={onClose}>

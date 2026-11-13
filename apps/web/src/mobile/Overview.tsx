@@ -157,6 +157,13 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
         <div className="m-card-title">{card.title}</div>
         {kind === 'you' && card.status === 'review' && card.summary && <p className="m-card-ok">✓ {card.summary}</p>}
         {kind === 'failed' && card.error && <p className="m-card-err">{card.error.split('\n')[0]}</p>}
+        {card.repos.length > 0 && (
+          <p className="m-card-pr">
+            {card.repos
+              .map((r) => `${r.name}${r.pr && r.pr.state === 'open' ? ` PR #${r.pr.number} ${ciSummary(r.pr).label.split(' ')[0]}` : r.shipped && r.shipped !== 'skipped' ? ' ✓' : ''}`)
+              .join(' · ')}
+          </p>
+        )}
         {card.pr && card.pr.state === 'open' && (
           <p className={`m-card-pr ${ciSummary(card.pr).tone}`}>
             PR #{card.pr.number}

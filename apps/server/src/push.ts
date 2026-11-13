@@ -195,22 +195,43 @@ export function cardEvent(before: Card, after: Card): CardEventName | null {
     return null; // stopped by you
   }
   if (after.status === 'needs_input' && before.status !== 'needs_input' && after.waiting) return 'input';
-  const a = after.pr;
-  const b = before.pr;
-  if (a && a.state === 'open' && after.status === 'review') {
-    if (a.checks.failed > 0 && (!b || b.checks.failed === 0)) return 'ci_failed';
-    const done = a.checks.total > 0 && a.checks.pending === 0 && a.checks.failed === 0;
-    const wasDone = b && b.checks.total > 0 && b.checks.pending === 0 && b.checks.failed === 0;
+  // CI over every open PR of the task (one for a repo, several on a multi-repo board).
+  const a = ciTotals(after);
+  const b = ciTotals(before);
+  if (a && after.status === 'review') {
+    if (a.failed > 0 && (!b || b.failed === 0)) return 'ci_failed';
+    const done = a.total > 0 && a.pending === 0 && a.failed === 0;
+    const wasDone = b && b.total > 0 && b.pending === 0 && b.failed === 0;
     if (done && b && !wasDone) return 'ci_passed';
   }
   return null;
+}
+
+function openPrs(card: Card) {
+  return [card.pr, ...(card.repos ?? []).map((r) => r.pr)].filter((p): p is NonNullable<typeof p> => !!p && p.state === 'open');
+}
+
+function ciTotals(card: Card) {
+  const prs = openPrs(card);
+  if (!prs.length) return null;
+  return prs.reduce(
+    (t, p) => ({
+      total: t.total + p.checks.total,
+      failed: t.failed + p.checks.failed,
+      pending: t.pending + p.checks.pending,
+      passed: t.passed + p.checks.passed,
+      failing: [...t.failing, ...p.checks.failing],
+    }),
+    { total: 0, failed: 0, pending: 0, passed: 0, failing: [] as string[] },
+  );
 }
 
 export function cardPayload(event: CardEventName, card: Card, projectName: string): PushPayload {
   const kind = eventKind(event);
   const where = `${projectName} · ${AGENT_LABELS[card.agent]}`;
   const base = { kind, url: `/#card/${card.id}`, tag: `card-${card.id}` };
-  const pr = card.pr;
+  const pr = card.pr ?? openPrs(card)[0] ?? null;
+  const ci = ciTotals(card);
   if (event === 'pr_merged') {
     return { ...base, title: `⑂ Đã merge PR: ${card.title}`, body: clip(card.summary ? `${projectName} — ${card.summary}` : projectName) };
   }
@@ -218,14 +239,14 @@ export function cardPayload(event: CardEventName, card: Card, projectName: strin
     return {
       ...base,
       title: `⚠ CI lỗi: ${card.title}`,
-      body: clip(`${projectName} · PR #${pr.number} — ${pr.checks.failing.join(', ') || `${pr.checks.failed} kiểm tra lỗi`}`),
+      body: clip(`${projectName} · PR #${pr.number} — ${ci?.failing.join(', ') || `${ci?.failed ?? pr.checks.failed} kiểm tra lỗi`}`),
     };
   }
   if (event === 'ci_passed' && pr) {
     return {
       ...base,
       title: `✓ CI đã qua: ${card.title}`,
-      body: clip(`${projectName} · PR #${pr.number} — ${pr.checks.passed}/${pr.checks.total} kiểm tra qua, sẵn sàng merge.`),
+      body: clip(`${projectName} · PR #${pr.number} — ${ci?.passed ?? pr.checks.passed}/${ci?.total ?? pr.checks.total} kiểm tra qua, sẵn sàng merge.`),
     };
   }
   if (kind === 'done') {

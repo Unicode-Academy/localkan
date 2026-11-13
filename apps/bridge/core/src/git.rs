@@ -189,7 +189,28 @@ pub async fn folder_info(path: &str) -> FolderInfo {
         && std::fs::read_dir(dir)
             .map(|mut it| it.all(|e| e.ok().is_some_and(|e| matches!(e.file_name().to_str(), Some(".DS_Store" | ".localized")))))
             .unwrap_or(false);
-    FolderInfo { path: path.to_string(), exists, is_git_repo, is_empty }
+    let child_repos = if exists && !is_git_repo { child_repos(dir) } else { Vec::new() };
+    FolderInfo { path: path.to_string(), exists, is_git_repo, is_empty, child_repos }
+}
+
+/// Git repos directly inside `dir` (frontend/, backend/…), backend-like ones first: on a
+/// multi-repo board they ship in this order, APIs before the apps that call them.
+pub fn child_repos(dir: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.flatten()
+                .filter(|e| e.path().is_dir() && e.path().join(".git").exists())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| !n.starts_with('.'))
+                .collect()
+        })
+        .unwrap_or_default();
+    let backendish = |n: &str| {
+        let n = n.to_lowercase();
+        ["backend", "api", "server", "service"].iter().any(|k| n.contains(k)) || n == "be"
+    };
+    names.sort_by_key(|n| (!backendish(n), n.to_lowercase()));
+    names
 }
 
 /// Create the folder if needed and make it a git repository on branch `main`.

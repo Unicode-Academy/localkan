@@ -19,7 +19,7 @@ import { DiffView } from './DiffView.tsx';
 import { ImageAttachments, imagesFromClipboard, acceptImages } from './ImageAttachments.tsx';
 import { ParentSelect } from './ParentSelect.tsx';
 import { PreviewTab } from './PreviewTab.tsx';
-import { PrPanel } from './PrPanel.tsx';
+import { PrPanel, ReposPanel } from './PrPanel.tsx';
 import { RemoteBrowser } from './RemoteBrowser.tsx';
 import { RunBadge } from './RunBadge.tsx';
 import type { ToastApi } from './Toasts.tsx';
@@ -484,9 +484,11 @@ function ReviewTab({ card, project, busy, run, toasts }: { card: Card; project: 
   useEffect(load, [load, card.updatedAt]);
 
   const canReview = card.status === 'review';
-  const prFlow = project.git.flow === 'pr' || !!card.pr;
+  const multi = card.repos.length > 0;
+  const prFlow = !multi && (project.git.flow === 'pr' || !!card.pr);
   return (
     <div className="review">
+      {multi && <ReposPanel card={card} toasts={toasts} />}
       {prFlow && card.status !== 'done' && <PrPanel card={card} project={project} toasts={toasts} />}
       <div className="row">
         <button className="btn ghost small" onClick={load}>
@@ -539,13 +541,14 @@ function ReviewTab({ card, project, busy, run, toasts }: { card: Card; project: 
         </div>
       )}
       {finishing && canReview && (
-        <FinishBox card={card} busy={busy} run={run} onCancel={() => setFinishing(false)} flow={prFlow ? 'pr' : project.git.flow} />
+        <FinishBox card={card} busy={busy} run={run} onCancel={() => setFinishing(false)} flow={multi ? 'multi' : prFlow ? 'pr' : project.git.flow} />
       )}
     </div>
   );
 }
 
 const FINISH: Record<FinishAction, { label: string; hint: string }> = {
+  ship: { label: 'Hoàn tất từng repo', hint: 'Mỗi repo có thay đổi theo cách của nó: merge PR, merge rồi push, hoặc merge trên máy.' },
   merge_push: { label: 'Merge rồi push', hint: 'Merge vào nhánh gốc mới nhất trên origin và push lên remote (không mở PR).' },
   merge_pr: { label: 'Merge PR trên GitHub', hint: 'Đẩy nhánh, mở PR nếu chưa có, rồi merge trên GitHub (CI/CD của repo, nếu có, chạy từ đó).' },
   pr: { label: 'Chỉ mở Pull Request', hint: 'Đẩy nhánh và mở PR (sẵn sàng review); bạn tự merge trên GitHub.' },
@@ -565,10 +568,12 @@ export function FinishBox({
   busy: boolean;
   run: Run;
   onCancel: () => void;
-  flow?: GitFlow;
+  flow?: GitFlow | 'multi';
 }) {
   const order: FinishAction[] =
-    flow === 'pr'
+    flow === 'multi'
+      ? ['ship', 'commit', 'discard']
+      : flow === 'pr'
       ? ['merge_pr', 'pr', 'commit', 'merge', 'discard']
       : flow === 'push'
         ? ['merge_push', 'pr', 'commit', 'merge', 'discard']

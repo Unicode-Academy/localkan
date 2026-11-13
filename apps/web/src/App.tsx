@@ -333,7 +333,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
             }
             aria-label="Cài đặt git"
           >
-            ⑂<span className="topbar-label"> {project.git.flow === 'pr' ? 'PR' : project.git.flow === 'push' ? 'Push' : 'Git'}</span>
+            ⑂<span className="topbar-label"> {project.repos.length ? `Git (${project.repos.length} repo)` : project.git.flow === 'pr' ? 'PR' : project.git.flow === 'push' ? 'Push' : 'Git'}</span>
           </button>
         )}
         <div className="spacer" />

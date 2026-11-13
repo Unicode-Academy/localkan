@@ -162,6 +162,8 @@ export interface Card {
   prUrl: string | null;
   /** Open pull request of this task (flow `pr`), with its CI checks. */
   pr: PrInfo | null;
+  /** Multi-repo board: each repo's branch, git flow, PR and whether it shipped. */
+  repos: CardRepo[];
   /** Card this one continues from: its handoff note is passed on, and when its branch is not
    *  merged yet the new worktree starts from that branch. */
   parentCardId: string | null;
@@ -187,7 +189,30 @@ export interface Project {
   preview: PreviewInfo | null;
   /** How finished work reaches the repo (local merge, or GitHub pull requests). */
   git: GitSettings;
+  /** Multi-repo board: the git repos inside the folder (empty for a single repo). */
+  repos: ProjectRepo[];
+  /** Multi-repo board: git settings per repo, by repo name. */
+  repoGit: Record<string, GitSettings>;
   createdAt: string;
+}
+
+/** A git repo inside a multi-repo board's folder. */
+export interface ProjectRepo {
+  /** Folder name, e.g. `frontend`. */
+  name: string;
+  path: string;
+}
+
+/** One repo of a task on a multi-repo board. */
+export interface CardRepo {
+  name: string;
+  branch: string;
+  /** Branch it merges into. */
+  base: string;
+  flow: GitFlow;
+  pr: PrInfo | null;
+  /** Set once this repo's part is done: merged (PR or local), pushed, or skipped (no changes). */
+  shipped: 'merged' | 'pushed' | 'local' | 'skipped' | null;
 }
 
 /** `pr`: each task gets a branch from origin, a GitHub pull request and CI; merging the PR on
@@ -323,6 +348,9 @@ export interface FolderInfo {
   isGitRepo: boolean;
   /** No entries other than OS metadata files such as .DS_Store. */
   isEmpty: boolean;
+  /** Not a repo itself but holds git repos one level down (e.g. frontend/ and backend/):
+   *  the board becomes a multi-repo board. */
+  childRepos: string[];
 }
 
 export interface ReviewComment {
@@ -342,7 +370,9 @@ export type TerminalKey = 'approve' | 'reject' | 'enter' | 'esc' | 'up' | 'down'
  *  `pr`: open (or mark ready) the pull request and leave the merge to you on GitHub.
  *  `merge`: merge into the branch checked out in the project folder (no push).
  *  `commit`: keep the work on its branch. `discard`: drop it (closes an open PR). */
-export type FinishAction = 'merge_push' | 'merge_pr' | 'commit' | 'pr' | 'merge' | 'discard';
+/** `ship` (multi-repo boards): every repo its own way — merge its PR, merge and push, or merge
+ *  locally — skipping repos without changes. */
+export type FinishAction = 'ship' | 'merge_push' | 'merge_pr' | 'commit' | 'pr' | 'merge' | 'discard';
 
 // ---------------------------------------------------------------------------
 // Server <-> bridge wire protocol (JSON over WebSocket)
@@ -352,10 +382,19 @@ export interface BridgeMethods {
   /** Register a local git repo with Orca and prepare its coordinator. */
   'project.register': {
     params: { projectId: string; repoPath: string };
-    result: { baseRef: string | null; displayName: string; repo: RepoInfo };
+    result: {
+      baseRef: string | null;
+      displayName: string;
+      repo: RepoInfo;
+      /** Multi-repo board: the repos found in the folder. */
+      repos?: { name: string; path: string; info: RepoInfo }[];
+    };
   };
   /** Remote, branches and GitHub CLI state of a project folder (for the board's git settings). */
-  'project.repo': { params: { projectId: string; repoPath: string }; result: RepoInfo };
+  'project.repo': {
+    params: { projectId: string; repoPath: string };
+    result: RepoInfo & { children?: { name: string; info: RepoInfo }[] };
+  };
   /** Fetch the task's pull request and CI checks now (also done periodically). */
   'card.pr.refresh': { params: { cardId: string }; result: { pr: PrInfo | null } };
   /** Bring the task branch up to date with origin/<base> (merge) and push. */
@@ -377,6 +416,8 @@ export interface BridgeMethods {
       parent: { cardId: string; title: string; branch: string | null } | null;
       /** The board's git settings (base branch, branch prefix, PR flow). */
       git: GitSettings;
+      /** Multi-repo board: settings per repo. */
+      repoGit: Record<string, GitSettings>;
     };
     result: { accepted: true };
   };
@@ -424,8 +465,9 @@ export interface BridgeMethods {
   'card.screen': { params: { cardId: string }; result: { lines: string[] } };
   'card.log': { params: { cardId: string; after?: number }; result: { lines: LogLine[] } };
   'card.finish': {
-    params: { cardId: string; action: FinishAction; commitMessage: string; git: GitSettings };
-    result: { prUrl?: string; message: string };
+    params: { cardId: string; action: FinishAction; commitMessage: string; git: GitSettings; repoGit: Record<string, GitSettings> };
+    /** `repos`: multi-repo task, the final state of each repo. */
+    result: { prUrl?: string; message: string; repos?: CardRepo[] };
   };
   'card.stop': { params: { cardId: string }; result: { ok: true } };
   'card.focus': { params: { cardId: string }; result: { ok: true } };
@@ -445,6 +487,7 @@ export interface CardStatePatch {
   error?: string | null;
   preview?: PreviewInfo | null;
   pr?: PrInfo | null;
+  repos?: CardRepo[];
   /** Set by the bridge when it sees the PR merged on GitHub (the task is then done). */
   prUrl?: string | null;
 }

@@ -136,3 +136,118 @@ export function PrPanel({ card, project, toasts }: { card: Card; project: Projec
     </section>
   );
 }
+
+const FLOW_LABEL: Record<string, string> = { pr: 'PR', push: 'merge rồi push', local: 'merge cục bộ' };
+const SHIPPED_LABEL: Record<string, string> = {
+  merged: '✓ đã merge',
+  pushed: '✓ đã merge và push',
+  local: '✓ đã merge trên máy',
+  skipped: 'không có thay đổi',
+};
+
+/** Multi-repo task: each repo's branch, how it ships, its PR and CI, and what is done. */
+export function ReposPanel({ card, toasts }: { card: Card; toasts: ToastApi }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const prs = card.repos.filter((r) => r.pr && r.pr.state === 'open');
+  const conflicting = prs.some((r) => r.pr!.mergeable === 'conflicting');
+
+  const act = async (label: string, fn: () => Promise<unknown>) => {
+    setBusy(label);
+    try {
+      await fn();
+    } catch (err) {
+      toasts.error((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="pr-panel">
+      <div className="pr-head">
+        <strong>{card.repos.length} repo</strong>
+        <div className="spacer" />
+        {card.status !== 'done' && (
+          <>
+            <button className="btn ghost small" disabled={!!busy} onClick={() => act('refresh', () => api.prRefresh(card.id))} title="Kiểm tra PR trên GitHub">
+              {busy === 'refresh' ? '…' : '↻'}
+            </button>
+            <button
+              className="btn ghost small"
+              disabled={!!busy}
+              title="Merge nhánh gốc mới nhất trên origin vào nhánh việc của từng repo"
+              onClick={() =>
+                act('sync', async () => {
+                  const r = await api.prSync(card.id);
+                  (r.ok ? toasts.info : toasts.error)(r.message);
+                })
+              }
+            >
+              {busy === 'sync' ? 'Đang cập nhật…' : 'Cập nhật theo nhánh gốc'}
+            </button>
+          </>
+        )}
+      </div>
+      <ul className="repo-list">
+        {card.repos.map((r) => {
+          const ci = r.pr ? ciSummary(r.pr) : null;
+          return (
+            <li key={r.name}>
+              <div className="repo-line">
+                <code className="repo-name">{r.name}/</code>
+                <span className="muted small">
+                  {r.branch} → {r.base} · {FLOW_LABEL[r.flow] ?? r.flow}
+                </span>
+              </div>
+              <div className="repo-line">
+                {r.pr && (
+                  <a href={r.pr.url} target="_blank" rel="noreferrer" className="pr-link small">
+                    PR #{r.pr.number}
+                    {r.pr.draft && r.pr.state === 'open' ? ' (nháp)' : ''}
+                  </a>
+                )}
+                {r.pr && r.pr.state === 'open' && ci && <span className={`pr-ci ${ci.tone}`}>{ci.label}</span>}
+                {r.pr && r.pr.state === 'open' && r.pr.mergeable === 'conflicting' && <span className="pr-ci danger">xung đột</span>}
+                {r.shipped && <span className={`pr-ci ${r.shipped === 'skipped' ? 'muted' : 'ok'}`}>{SHIPPED_LABEL[r.shipped]}</span>}
+                {!r.pr && !r.shipped && r.flow === 'pr' && <span className="muted small">chưa có PR</span>}
+              </div>
+              {r.pr && r.pr.state === 'open' && r.pr.checks.failing.length > 0 && (
+                <p className="small error-text">Kiểm tra lỗi: {r.pr.checks.failing.join(', ')}</p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {conflicting && (
+        <div className="row wrap">
+          <button
+            className="btn small"
+            disabled={!!busy}
+            onClick={() =>
+              act('agent', () =>
+                api.followup(
+                  card.id,
+                  `Một số repo đang xung đột với nhánh gốc trên origin (${prs.filter((r) => r.pr!.mergeable === 'conflicting').map((r) => `${r.name}/ với origin/${r.base}`).join(', ')}). Trong từng repo đó, chạy \`git fetch origin <nhánh gốc> && git merge origin/<nhánh gốc>\`, giải quyết hết xung đột, rồi chạy lại build và test. Không cần commit.`,
+                  [],
+                ),
+              )
+            }
+          >
+            Nhờ agent xử lý xung đột
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** What "Hoàn tất" will do on a multi-repo task, one line per repo. */
+export function shipPlan(card: Card): string {
+  return card.repos
+    .filter((r) => !r.shipped)
+    .map((r) => {
+      const how = r.flow === 'pr' ? `merge PR${r.pr ? ` #${r.pr.number}` : ''} vào ${r.base}` : r.flow === 'push' ? `merge rồi push vào ${r.base}` : `merge vào ${r.base} trên máy`;
+      return `• ${r.name}: ${how} (nếu có thay đổi)`;
+    })
+    .join('\n');
+}

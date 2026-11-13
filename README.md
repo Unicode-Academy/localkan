@@ -82,6 +82,26 @@ Thông báo đẩy có thêm: **CI lỗi**, **CI đã qua** (sẵn sàng merge),
 
 Yêu cầu: repo có remote `origin` trên GitHub, máy chạy bridge push được (SSH hoặc HTTPS như khi bạn tự push), và GitHub CLI đã đăng nhập (`gh auth login`).
 
+## Bảng nhiều repo (thư mục chứa frontend/, backend/…)
+
+Nếu dự án là một thư mục **không phải** git repo nhưng chứa nhiều repo riêng ở cấp ngay dưới (ví dụ `shop/frontend` và `shop/backend`, mỗi thư mục một repo), hãy chọn chính thư mục cha khi tạo bảng. Localkan nhận ra đây là **bảng nhiều repo** và không bắt `git init` thư mục cha. Thư mục của bạn giữ nguyên.
+
+- **Mỗi việc có một thư mục riêng, cùng cấu trúc với thư mục cha:** `<việc>/frontend` và `<việc>/backend`. Mỗi thư mục con là worktree của repo tương ứng, cùng một nhánh `feature/…`, lấy từ nhánh gốc mới nhất của repo đó. Agent chạy ở thư mục việc nên sửa được nhiều repo cùng lúc, giống như khi bạn cho agent vào thư mục cha.
+- **Mỗi repo có cài đặt git riêng** trong ⑂: Pull Request, Merge rồi push, hoặc merge cục bộ, cùng nhánh gốc và tiền tố riêng. Repo mới tự chọn theo remote và CI của nó.
+- **Review:**
+  - Diff gộp các repo, đường dẫn có tiền tố `frontend/…`, `backend/…`.
+  - Khối "N repo" hiện nhánh, cách hoàn tất, PR, CI và xung đột của từng repo.
+  - Repo luồng PR tự mở PR nháp khi agent xong.
+- **⑂ Hoàn tất N repo:** xử lý lần lượt từng repo có thay đổi theo cách của nó. Repo kiểu backend/api/server được xử lý trước, vì frontend thường phụ thuộc API của backend. Repo không có thay đổi được bỏ qua.
+  - Nếu một repo lỗi (xung đột, GitHub từ chối merge), Localkan dừng lại ngay và báo repo nào lỗi, repo nào đã xong.
+  - Bấm Hoàn tất lại sau khi sửa: các repo đã xong được bỏ qua.
+- **Hủy:** đóng các PR, xóa worktree và nhánh ở mọi repo.
+- **Merge thẳng trên github.com:** Localkan tự dọn repo đó. Khi không còn repo nào dở dang, việc chuyển sang Xong.
+- **Bộ nhớ dự án và ghi chú bàn giao** nằm ở `.localkan/` của thư mục cha, dùng chung cho mọi repo.
+- **Xem trước:** chạy repo có script `dev` hoặc `start`, ưu tiên tên kiểu frontend/web/client/app.
+
+Về kỹ thuật: Orca chỉ quản lý git repo, nên mỗi bảng nhiều repo có thêm một repo trống, riêng tư, nằm trong thư mục dữ liệu của bridge (`workspaces/`), chỉ để Orca quản lý thư mục việc và terminal của agent. Repo này không bao giờ được push.
+
 ## Xem trước và chụp màn hình (kể cả khi đi ra ngoài)
 
 Tab **Xem trước** trong thẻ, khi thẻ đã giao việc và chưa hoàn tất:

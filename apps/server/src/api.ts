@@ -234,7 +234,19 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       await store.updateProject(projectId, { status: 'ready', baseRef: res.baseRef, error: null });
       // First registration: a GitHub repo (with the GitHub CLI ready) defaults to the PR flow
       // from the branch the folder is on.
-      if (res.repo && !(await store.hasGitSettings(projectId))) {
+      if (res.repos?.length) {
+        // Multi-repo board: remember its repos; each new repo gets a default flow of its own.
+        const saved = await store.savedRepoGit(projectId);
+        const repoGit = { ...saved };
+        for (const r of res.repos) {
+          if (repoGit[r.name]) continue;
+          const i = r.info;
+          const base = i.currentBranch && i.remoteBranches.includes(i.currentBranch) ? i.currentBranch : i.defaultBranch;
+          const flow = !i.remoteUrl ? 'local' : i.github && i.ghReady && i.ci ? 'pr' : 'push';
+          repoGit[r.name] = { ...DEFAULT_GIT_SETTINGS, flow, baseBranch: base ?? i.currentBranch ?? null };
+        }
+        await store.updateProject(projectId, { repos: res.repos.map(({ name, path }) => ({ name, path })), repoGit });
+      } else if (res.repo && !(await store.hasGitSettings(projectId))) {
         const r = res.repo;
         const base = r.currentBranch && r.remoteBranches.includes(r.currentBranch) ? r.currentBranch : r.defaultBranch;
         // Remote with CI on GitHub: pull requests. Remote without CI (a new project): merge and
@@ -284,8 +296,11 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
 
   api.put('/projects/:id/git', async (c) => {
     const p = await ownProject(c, c.req.param('id'));
-    const git = parseGitSettings(await body<Partial<GitSettings>>(c));
-    await store.updateProject(p.id, { git });
+    const b = await body<Partial<GitSettings> & { repos?: Record<string, Partial<GitSettings>> }>(c);
+    const git = parseGitSettings(b);
+    const repoGit: Record<string, GitSettings> = {};
+    for (const r of p.repos) repoGit[r.name] = b.repos?.[r.name] ? parseGitSettings(b.repos[r.name]) : p.repoGit[r.name];
+    await store.updateProject(p.id, p.repos.length ? { git, repoGit } : { git });
     const project = (await store.getProject(p.id))!;
     hub.sendToUser(c.get('userId'), { type: 'project.updated', project });
     return c.json(project);
@@ -529,6 +544,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
         attachments: card.attachments.map(({ id, name, mime }) => ({ id, name, mime })),
         parent: await parentRef(card),
         git: project.git,
+        repoGit: project.repoGit,
       });
     } catch (err) {
       pushCard(userId, await store.updateCard(card.id, { status: 'todo', runState: 'failed', error: (err as Error).message }));
@@ -559,6 +575,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
         attachments: card.attachments.map(({ id, name, mime }) => ({ id, name, mime })),
         parent: await parentRef(card),
         git: project.git,
+        repoGit: project.repoGit,
       });
     } catch (err) {
       pushCard(userId, await store.updateCard(card.id, { ...before, error: (err as Error).message }));
@@ -645,12 +662,12 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     if (card.status === 'done') throw new HttpError(409, 'Thẻ này đã được hoàn tất rồi.');
     const b = await body<{ action?: FinishAction; commitMessage?: string }>(c);
     const action = b.action ?? 'commit';
-    if (!['merge_push', 'merge_pr', 'commit', 'pr', 'merge', 'discard'].includes(action)) throw new HttpError(400, 'Hành động không hợp lệ.');
+    if (!['ship', 'merge_push', 'merge_pr', 'commit', 'pr', 'merge', 'discard'].includes(action)) throw new HttpError(400, 'Hành động không hợp lệ.');
     const project = await ownProject(c, card.projectId);
     const res = await hub.request(
       deviceId,
       'card.finish',
-      { cardId: card.id, action, commitMessage: b.commitMessage?.trim() || card.title, git: project.git },
+      { cardId: card.id, action, commitMessage: b.commitMessage?.trim() || card.title, git: project.git, repoGit: project.repoGit },
       300_000,
     );
     const updated = await store.updateCard(card.id, {
@@ -658,6 +675,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       runState: 'idle',
       waiting: null,
       prUrl: res.prUrl ?? card.prUrl,
+      ...(res.repos ? { repos: res.repos } : {}),
       summary: res.message,
       error: null,
       preview: null,

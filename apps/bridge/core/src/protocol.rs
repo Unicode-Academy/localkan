@@ -93,6 +93,8 @@ pub struct CardStatePatch {
     pub pr: Option<Option<PrInfo>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pr_url: Option<Option<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repos: Option<Vec<CardRepoInfo>>,
 }
 
 impl CardStatePatch {
@@ -120,6 +122,7 @@ impl CardStatePatch {
         take!(preview);
         take!(pr);
         take!(pr_url);
+        take!(repos);
     }
 }
 
@@ -190,6 +193,9 @@ pub struct CardStart {
     pub parent: Option<ParentRef>,
     #[serde(default)]
     pub git: GitSettings,
+    /// Multi-repo board: git settings per repo name.
+    #[serde(default)]
+    pub repo_git: std::collections::HashMap<String, GitSettings>,
 }
 
 /// The board's git workflow (see GitSettings in @localkan/protocol).
@@ -316,6 +322,8 @@ pub struct FolderInfo {
     pub exists: bool,
     pub is_git_repo: bool,
     pub is_empty: bool,
+    /// Git repos one level down when the folder is not a repo itself (multi-repo board).
+    pub child_repos: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -359,6 +367,20 @@ pub struct CardFinish {
     pub commit_message: String,
     #[serde(default)]
     pub git: GitSettings,
+    #[serde(default)]
+    pub repo_git: std::collections::HashMap<String, GitSettings>,
+}
+
+/// One repo of a task on a multi-repo board (see CardRepo in @localkan/protocol).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CardRepoInfo {
+    pub name: String,
+    pub branch: String,
+    pub base: String,
+    pub flow: String,
+    pub pr: Option<PrInfo>,
+    pub shipped: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

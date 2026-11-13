@@ -17,8 +17,10 @@ import type {
   ProjectStatus,
   RunState,
   WaitingInfo,
+  CardRepo,
   GitSettings,
   PrInfo,
+  ProjectRepo,
 } from '@localkan/protocol';
 import { DEFAULT_GIT_SETTINGS } from '@localkan/protocol';
 
@@ -64,6 +66,8 @@ interface ProjectDoc {
   error: string | null;
   preview?: PreviewInfo | null;
   git?: Partial<GitSettings>;
+  repos?: ProjectRepo[];
+  repoGit?: Record<string, Partial<GitSettings>>;
   createdAt: Date;
 }
 
@@ -88,6 +92,7 @@ interface CardDoc {
   preview: PreviewInfo | null;
   autoPreview?: boolean;
   pr?: PrInfo | null;
+  repos?: CardRepo[];
   attachments: Attachment[];
   createdAt: Date;
   updatedAt: Date;
@@ -129,6 +134,10 @@ export function toProject(p: ProjectDoc): Project {
     error: p.error ?? null,
     preview: p.preview ?? null,
     git: { ...DEFAULT_GIT_SETTINGS, ...(p.git ?? {}) },
+    repos: p.repos ?? [],
+    repoGit: Object.fromEntries(
+      (p.repos ?? []).map((r) => [r.name, { ...DEFAULT_GIT_SETTINGS, ...(p.git ?? {}), ...(p.repoGit?.[r.name] ?? {}) }]),
+    ),
     createdAt: iso(p.createdAt)!,
   };
 }
@@ -155,6 +164,7 @@ export function toCard(c: CardDoc): Card {
     preview: c.preview ?? null,
     autoPreview: c.autoPreview ?? false,
     pr: c.pr ?? null,
+    repos: c.repos ?? [],
     attachments: c.attachments ?? [],
     createdAt: iso(c.createdAt)!,
     updatedAt: iso(c.updatedAt)!,
@@ -333,8 +343,16 @@ export class Store {
     });
   }
 
-  async updateProject(id: string, patch: Partial<Pick<ProjectDoc, 'status' | 'baseRef' | 'error' | 'preview' | 'git'>>) {
+  async updateProject(
+    id: string,
+    patch: Partial<Pick<ProjectDoc, 'status' | 'baseRef' | 'error' | 'preview' | 'git' | 'repos' | 'repoGit'>>,
+  ) {
     await this.projects.updateOne({ _id: id }, { $set: patch });
+  }
+
+  /** Saved per-repo git settings of a multi-repo board. */
+  async savedRepoGit(id: string): Promise<Record<string, Partial<GitSettings>>> {
+    return (await this.projects.findOne({ _id: id }, { projection: { repoGit: 1 } }))?.repoGit ?? {};
   }
 
   /** Whether the board's git settings were ever chosen (boards from before keep `local`). */

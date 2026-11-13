@@ -12,7 +12,7 @@ import {
 import { api } from '../api.ts';
 import { FinishBox, LogTab, WaitingBox, type Run } from '../components/CardPanel.tsx';
 import { DiffView } from '../components/DiffView.tsx';
-import { ciSummary, PrPanel } from '../components/PrPanel.tsx';
+import { ciSummary, PrPanel, ReposPanel, shipPlan } from '../components/PrPanel.tsx';
 import type { ToastApi } from '../components/Toasts.tsx';
 import { appendPhrase, VoiceButton } from '../components/VoiceButton.tsx';
 import { badge, bucket, timeAgo } from './status.ts';
@@ -206,7 +206,8 @@ function Review({
   useEffect(load, [load, card.updatedAt]);
 
   const isAsk = card.mode === 'ask';
-  const prFlow = !isAsk && (project.git.flow === 'pr' || !!card.pr);
+  const multi = card.repos.length > 0;
+  const prFlow = !isAsk && !multi && (project.git.flow === 'pr' || !!card.pr);
   const base = card.pr?.base || project.git.baseBranch || project.baseRef || 'main';
   const mergePr = () => {
     const pr = card.pr;
@@ -229,6 +230,7 @@ function Review({
 
   return (
     <>
+      {multi && <ReposPanel card={card} toasts={toasts} />}
       {prFlow && <PrPanel card={card} project={project} toasts={toasts} />}
       {!isAsk && <PreviewBlock card={card} toasts={toasts} autoStart={startPreview} />}
 
@@ -293,7 +295,9 @@ function Review({
         )}
       </section>
 
-      {more && <FinishBox card={card} busy={busy} run={run} onCancel={() => setMore(false)} flow={prFlow ? 'pr' : project.git.flow} />}
+      {more && (
+        <FinishBox card={card} busy={busy} run={run} onCancel={() => setMore(false)} flow={multi ? 'multi' : prFlow ? 'pr' : project.git.flow} />
+      )}
 
       <div className="m-bottom m-decide">
         <div className="m-row">
@@ -303,6 +307,17 @@ function Review({
           {isAsk ? (
             <button className="m-btn big primary" disabled={busy} onClick={() => run(() => api.finish(card.id, 'discard', ''), 'Đã đóng việc.')}>
               ✓ Xong
+            </button>
+          ) : multi ? (
+            <button
+              className="m-btn big primary"
+              disabled={busy}
+              onClick={() =>
+                confirm(`Hoàn tất việc này ở từng repo?\n${shipPlan(card)}`) &&
+                run(() => api.finish(card.id, 'ship', card.title), 'Đã hoàn tất các repo.')
+              }
+            >
+              ⑂ Hoàn tất {card.repos.filter((r) => !r.shipped).length} repo
             </button>
           ) : prFlow ? (
             <button className="m-btn big primary" disabled={busy} onClick={mergePr}>
@@ -338,7 +353,7 @@ function Review({
             </button>
           )}
           <button className="m-link" onClick={() => setMore((v) => !v)}>
-            {more ? 'Ẩn cách khác' : prFlow ? 'Cách khác…' : 'Cách khác (commit, PR)…'}
+            {more ? 'Ẩn cách khác' : prFlow || multi ? 'Cách khác…' : 'Cách khác (commit, PR)…'}
           </button>
         </div>
       </div>

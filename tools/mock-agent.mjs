@@ -8,7 +8,8 @@
 //   - if it contains "LOGIN: <url>", opens <url> in Orca's shared browser, asks for a sign-in
 //     with a "[LOGIN] <url>" question, then records what the page shows after the answer;
 //   - if it contains "FAIL", reports failure;
-//   - otherwise appends a line to MOCK_CHANGES.md and reports success.
+//   - otherwise appends a line to MOCK_CHANGES.md and reports success (in a multi-repo task
+//     folder: in every repo listed in the task, or only the one named by "ONLY: <repo>").
 // Every message goes through the `orca orchestration` CLI, exactly like a real worker.
 
 import { execFileSync } from 'node:child_process';
@@ -79,9 +80,16 @@ function handleTask(text) {
     return;
   }
 
-  const file = join(process.cwd(), 'MOCK_CHANGES.md');
-  appendFileSync(file, `- ${new Date().toISOString()} ${spec.split('\n')[0].slice(0, 120)}${answer ? ` (answer: ${answer})` : ''}\n`);
-  log(`edited ${file}`);
+  // Multi-repo task folder: the spec lists the repos ("- `frontend/`: its own git repository");
+  // edit each of them, or only the one named by "ONLY: <repo>".
+  const repos = [...spec.matchAll(/^- `([^`/]+)\/`: its own git repository/gm)].map((m) => m[1]);
+  const only = spec.match(/ONLY:\s*(\S+)/)?.[1];
+  const dirs = repos.length ? repos.filter((r) => !only || r === only).map((r) => join(process.cwd(), r)) : [process.cwd()];
+  for (const dir of dirs) {
+    const file = join(dir, 'MOCK_CHANGES.md');
+    appendFileSync(file, `- ${new Date().toISOString()} ${spec.split('\n')[0].slice(0, 120)}${answer ? ` (answer: ${answer})` : ''}\n`);
+    log(`edited ${file}`);
+  }
   if (spec.includes('.localkan/handoff.md')) {
     mkdirSync(join(process.cwd(), '.localkan'), { recursive: true });
     const saw = [/Project memory/.test(spec) && 'project memory', /continues the earlier task/.test(spec) && 'parent handoff', /Recent work/.test(spec) && 'recent notes']
