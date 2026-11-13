@@ -3,6 +3,7 @@ import type { Card, Device, LogLine, Project } from '@localkan/protocol';
 import { CardPanel } from '../components/CardPanel.tsx';
 import { Dialog } from '../components/Dialog.tsx';
 import { RemoteBrowser } from '../components/RemoteBrowser.tsx';
+import { GitSettingsDialog } from '../components/GitSettingsDialog.tsx';
 import { ProjectPreview } from '../components/PreviewTab.tsx';
 import type { ToastApi } from '../components/Toasts.tsx';
 import { CardScreen } from './CardScreen.tsx';
@@ -45,7 +46,7 @@ export function MobileApp({
   const inApp = useRef(false);
   const [menu, setMenu] = useState(false);
   const [full, setFull] = useState<string | null>(null);
-  const [tool, setTool] = useState<{ kind: 'browser' | 'preview'; projectId: string } | null>(null);
+  const [tool, setTool] = useState<{ kind: 'browser' | 'preview' | 'git'; projectId: string } | null>(null);
 
   // Each screen starts at the top (the overview's scroll position must not carry over).
   useEffect(() => {
@@ -162,6 +163,9 @@ export function MobileApp({
                     👁 Xem trước {p.baseRef ?? 'main'}
                     {p.preview?.status === 'running' && ' ●'}
                   </button>
+                  <button className="m-btn small" onClick={() => (setMenu(false), setTool({ kind: 'git', projectId: p.id }))}>
+                    ⑂ {p.git.flow === 'pr' ? `PR → ${p.git.baseBranch ?? p.baseRef ?? 'main'}` : 'Git'}
+                  </button>
                 </div>
               </div>
             ))}
@@ -178,7 +182,10 @@ export function MobileApp({
         </div>
       )}
 
-      {tool && toolProject && (
+      {tool && toolProject && tool.kind === 'git' && (
+        <GitSettingsDialog project={toolProject} onClose={() => setTool(null)} toasts={toasts} />
+      )}
+      {tool && toolProject && tool.kind !== 'git' && (
         <Dialog
           title={tool.kind === 'browser' ? `Trình duyệt · ${toolProject.name}` : `Xem trước ${toolProject.baseRef ?? 'main'} · ${toolProject.name}`}
           onClose={() => setTool(null)}

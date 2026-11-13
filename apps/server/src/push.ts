@@ -170,20 +170,64 @@ export class Push {
   }
 }
 
-/** The notification for a card event, or null when the change is not worth a notification. */
-export function cardEvent(before: Card, after: Card): NotifyKind | null {
+/** What happened to a card, from a bridge update. */
+export type CardEventName = 'agent_done' | 'agent_failed' | 'input' | 'ci_failed' | 'ci_passed' | 'pr_merged';
+
+const EVENT_KIND: Record<CardEventName, NotifyKind> = {
+  agent_done: 'done',
+  agent_failed: 'failed',
+  input: 'input',
+  ci_failed: 'failed',
+  ci_passed: 'done',
+  pr_merged: 'done',
+};
+
+export function eventKind(e: CardEventName): NotifyKind {
+  return EVENT_KIND[e];
+}
+
+/** The notification-worthy change between two versions of a card, or null. */
+export function cardEvent(before: Card, after: Card): CardEventName | null {
+  if (after.status === 'done' && before.status !== 'done' && after.prUrl) return 'pr_merged'; // merged on GitHub
   if (after.status === 'review' && before.status !== 'review') {
-    if (after.runState === 'succeeded') return 'done';
-    if (after.runState === 'failed') return 'failed';
+    if (after.runState === 'succeeded') return 'agent_done';
+    if (after.runState === 'failed') return 'agent_failed';
     return null; // stopped by you
   }
   if (after.status === 'needs_input' && before.status !== 'needs_input' && after.waiting) return 'input';
+  const a = after.pr;
+  const b = before.pr;
+  if (a && a.state === 'open' && after.status === 'review') {
+    if (a.checks.failed > 0 && (!b || b.checks.failed === 0)) return 'ci_failed';
+    const done = a.checks.total > 0 && a.checks.pending === 0 && a.checks.failed === 0;
+    const wasDone = b && b.checks.total > 0 && b.checks.pending === 0 && b.checks.failed === 0;
+    if (done && b && !wasDone) return 'ci_passed';
+  }
   return null;
 }
 
-export function cardPayload(kind: NotifyKind, card: Card, projectName: string): PushPayload {
+export function cardPayload(event: CardEventName, card: Card, projectName: string): PushPayload {
+  const kind = eventKind(event);
   const where = `${projectName} · ${AGENT_LABELS[card.agent]}`;
   const base = { kind, url: `/#card/${card.id}`, tag: `card-${card.id}` };
+  const pr = card.pr;
+  if (event === 'pr_merged') {
+    return { ...base, title: `⑂ Đã merge PR: ${card.title}`, body: clip(`${projectName} — pipeline của repo sẽ deploy từ đây.`) };
+  }
+  if (event === 'ci_failed' && pr) {
+    return {
+      ...base,
+      title: `⚠ CI lỗi: ${card.title}`,
+      body: clip(`${projectName} · PR #${pr.number} — ${pr.checks.failing.join(', ') || `${pr.checks.failed} kiểm tra lỗi`}`),
+    };
+  }
+  if (event === 'ci_passed' && pr) {
+    return {
+      ...base,
+      title: `✓ CI đã qua: ${card.title}`,
+      body: clip(`${projectName} · PR #${pr.number} — ${pr.checks.passed}/${pr.checks.total} kiểm tra qua, sẵn sàng merge.`),
+    };
+  }
   if (kind === 'done') {
     return {
       ...base,

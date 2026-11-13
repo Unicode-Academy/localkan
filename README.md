@@ -43,6 +43,29 @@ Khi giao việc, nhiệm vụ gửi cho agent có thêm:
 
 Khi chọn "Làm tiếp từ thẻ…" mà nhánh của thẻ đó chưa merge, worktree mới sẽ bắt đầu từ nhánh đó và diff chỉ hiện phần việc mới. Muốn chia sẻ ghi chú qua git thì bỏ các dòng `.localkan/...` trong `.git/info/exclude` rồi commit.
 
+## Git: Pull Request trên GitHub hoặc merge cục bộ
+
+Mỗi bảng chọn một cách đưa việc đã duyệt vào repo, ở nút **⑂** trên thanh trên cùng (trên điện thoại: menu ☰ → ⑂). Bảng mới có remote GitHub (và máy có `gh` đã đăng nhập) tự chọn **Pull Request**, với nhánh gốc là nhánh đang mở trong thư mục dự án. Các bảng có từ trước giữ **merge cục bộ** cho tới khi bạn đổi.
+
+**Luồng Pull Request** (khớp với quy trình nhánh → PR → merge → pipeline tự deploy):
+
+| Bước | Localkan làm gì |
+| :-- | :-- |
+| Giao việc | `git fetch`, tạo worktree từ `origin/<nhánh gốc>` mới nhất, trên nhánh `feature/<tên-việc>-<mã>` (tiền tố đổi được). Thư mục dự án chính không bị đụng tới. |
+| Agent xong | Commit, push nhánh, mở **PR nháp** vào nhánh gốc (mô tả gồm tóm tắt và ghi chú bàn giao) để CI chạy trong lúc bạn review. Tắt được bằng "Mở PR nháp ngay khi agent xong". |
+| Review | Màn review hiện PR, trạng thái **CI** (qua / lỗi / đang chạy, tên kiểm tra lỗi) và xung đột với nhánh gốc. Localkan hỏi GitHub mỗi phút, và mỗi 20 giây khi đang mở màn review lúc CI chạy. |
+| Yêu cầu sửa | Agent sửa trong cùng worktree; Localkan commit (`Cập nhật theo review: …`) và đẩy vào cùng PR, CI chạy lại. |
+| Xung đột | **Cập nhật theo `<nhánh gốc>`** merge `origin/<nhánh gốc>` vào nhánh việc và đẩy lên. Nếu xung đột thì hủy merge (worktree giữ nguyên) và gợi ý **Nhờ agent xử lý xung đột**. |
+| **Merge PR** | Chuyển PR khỏi nháp, merge trên GitHub (squash / merge commit / rebase theo cài đặt), xóa nhánh trên GitHub và trên máy, rồi cập nhật nhánh gốc trong thư mục dự án nếu nó đang mở và sạch. Pipeline của repo deploy từ đó. |
+| Merge trên github.com | Nếu bạn tự merge PR trên GitHub, Localkan nhận ra trong khoảng một phút, dọn worktree và nhánh, rồi chuyển việc sang Xong. |
+| Hủy | Đóng PR, xóa nhánh trên GitHub và trên máy. |
+
+Trong "Cách khác…" vẫn có: chỉ mở PR (bạn tự merge trên GitHub), commit giữ nhánh, merge cục bộ. Nếu repo bật branch protection (bắt buộc CI qua hoặc cần người duyệt), GitHub có thể từ chối merge; Localkan báo lại đúng lý do GitHub đưa ra.
+
+Thông báo đẩy có thêm: **CI lỗi**, **CI đã qua** (sẵn sàng merge), và **PR đã được merge trên GitHub**.
+
+Yêu cầu: repo có remote `origin` trên GitHub, máy chạy bridge push được (SSH hoặc HTTPS như khi bạn tự push), và GitHub CLI đã đăng nhập (`gh auth login`).
+
 ## Xem trước và chụp màn hình (kể cả khi đi ra ngoài)
 
 Tab **Xem trước** trong thẻ, khi thẻ đã giao việc và chưa hoàn tất:

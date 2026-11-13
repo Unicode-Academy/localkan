@@ -89,6 +89,10 @@ pub struct CardStatePatch {
     pub error: Option<Option<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<Option<crate::preview::PreviewInfo>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr: Option<Option<PrInfo>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr_url: Option<Option<String>>,
 }
 
 impl CardStatePatch {
@@ -114,6 +118,8 @@ impl CardStatePatch {
         take!(summary);
         take!(error);
         take!(preview);
+        take!(pr);
+        take!(pr_url);
     }
 }
 
@@ -182,6 +188,77 @@ pub struct CardStart {
     pub attachments: Vec<AttachmentRef>,
     #[serde(default)]
     pub parent: Option<ParentRef>,
+    #[serde(default)]
+    pub git: GitSettings,
+}
+
+/// The board's git workflow (see GitSettings in @localkan/protocol).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GitSettings {
+    /// "pr" (GitHub pull requests) or "local" (merge in the project folder).
+    pub flow: String,
+    pub base_branch: Option<String>,
+    pub branch_prefix: String,
+    /// "squash" | "merge" | "rebase"
+    pub merge_method: String,
+    pub auto_draft_pr: bool,
+}
+
+impl Default for GitSettings {
+    fn default() -> Self {
+        Self { flow: "local".into(), base_branch: None, branch_prefix: "feature/".into(), merge_method: "squash".into(), auto_draft_pr: true }
+    }
+}
+
+impl GitSettings {
+    pub fn pr_flow(&self) -> bool {
+        self.flow == "pr"
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoInfo {
+    pub remote_url: Option<String>,
+    pub github: bool,
+    pub current_branch: Option<String>,
+    pub default_branch: Option<String>,
+    pub remote_branches: Vec<String>,
+    pub gh_ready: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PrChecks {
+    pub total: u32,
+    pub passed: u32,
+    pub failed: u32,
+    pub pending: u32,
+    pub failing: Vec<String>,
+}
+
+/// A task's GitHub pull request with its CI checks.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PrInfo {
+    pub number: u64,
+    pub url: String,
+    /// "open" | "merged" | "closed"
+    pub state: String,
+    pub draft: bool,
+    /// "mergeable" | "conflicting" | "unknown"
+    pub mergeable: String,
+    pub base: String,
+    pub checks: PrChecks,
+    pub checked_at: String,
+}
+
+impl PrInfo {
+    /// Same PR state, ignoring when it was checked.
+    pub fn same_as(&self, other: &PrInfo) -> bool {
+        PrInfo { checked_at: String::new(), ..self.clone() } == PrInfo { checked_at: String::new(), ..other.clone() }
+    }
 }
 
 /// The card a new card continues from.
@@ -273,6 +350,8 @@ pub struct CardFinish {
     pub card_id: String,
     pub action: String,
     pub commit_message: String,
+    #[serde(default)]
+    pub git: GitSettings,
 }
 
 #[derive(Debug, Deserialize)]

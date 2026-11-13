@@ -18,6 +18,7 @@ import { DiffView } from './DiffView.tsx';
 import { ImageAttachments, imagesFromClipboard, acceptImages } from './ImageAttachments.tsx';
 import { ParentSelect } from './ParentSelect.tsx';
 import { PreviewTab } from './PreviewTab.tsx';
+import { PrPanel } from './PrPanel.tsx';
 import { RemoteBrowser } from './RemoteBrowser.tsx';
 import { RunBadge } from './RunBadge.tsx';
 import type { ToastApi } from './Toasts.tsx';
@@ -181,7 +182,7 @@ export function CardPanel({
       <div className="panel-body">
         {tab === 'task' && <TaskTab card={card} cards={cards} toasts={toasts} />}
         {tab === 'log' && <LogTab log={log} />}
-        {tab === 'diff' && <ReviewTab card={card} busy={busy} run={run} />}
+        {tab === 'diff' && <ReviewTab card={card} project={project} busy={busy} run={run} toasts={toasts} />}
         {tab === 'terminal' && <TerminalTab card={card} busy={busy} run={run} />}
         {tab === 'preview' && <PreviewTab card={card} toasts={toasts} />}
       </div>
@@ -467,7 +468,7 @@ export function LogTab({ log }: { log: LogLine[] }) {
   );
 }
 
-function ReviewTab({ card, busy, run }: { card: Card; busy: boolean; run: Run }) {
+function ReviewTab({ card, project, busy, run, toasts }: { card: Card; project: Project; busy: boolean; run: Run; toasts: ToastApi }) {
   const [diff, setDiff] = useState<DiffResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [comments, setComments] = useState<ReviewComment[]>([]);
@@ -481,8 +482,10 @@ function ReviewTab({ card, busy, run }: { card: Card; busy: boolean; run: Run })
   useEffect(load, [load, card.updatedAt]);
 
   const canReview = card.status === 'review';
+  const prFlow = project.git.flow === 'pr' || !!card.pr;
   return (
     <div className="review">
+      {prFlow && card.status !== 'done' && <PrPanel card={card} project={project} toasts={toasts} />}
       <div className="row">
         <button className="btn ghost small" onClick={load}>
           ↻ Tải lại diff
@@ -533,30 +536,46 @@ function ReviewTab({ card, busy, run }: { card: Card; busy: boolean; run: Run })
           </div>
         </div>
       )}
-      {finishing && canReview && <FinishBox card={card} busy={busy} run={run} onCancel={() => setFinishing(false)} />}
+      {finishing && canReview && (
+        <FinishBox card={card} busy={busy} run={run} onCancel={() => setFinishing(false)} flow={prFlow ? 'pr' : 'local'} />
+      )}
     </div>
   );
 }
 
-const FINISH_OPTIONS: { action: FinishAction; label: string; hint: string }[] = [
-  { action: 'commit', label: 'Commit vào nhánh', hint: 'Commit thay đổi vào nhánh của thẻ, dọn worktree, giữ nhánh.' },
-  { action: 'pr', label: 'Tạo Pull Request', hint: 'Commit, push nhánh và tạo PR bằng gh (repo cần có remote).' },
-  { action: 'merge', label: 'Merge vào nhánh gốc', hint: 'Commit rồi merge vào nhánh gốc trong repo chính (repo chính phải sạch).' },
-  { action: 'discard', label: 'Hủy thay đổi', hint: 'Xóa worktree và nhánh của thẻ. Không hoàn tác được.' },
-];
+const FINISH: Record<FinishAction, { label: string; hint: string }> = {
+  merge_pr: { label: 'Merge PR trên GitHub', hint: 'Đẩy nhánh, mở PR nếu chưa có, rồi merge trên GitHub; pipeline của repo deploy từ đó.' },
+  pr: { label: 'Chỉ mở Pull Request', hint: 'Đẩy nhánh và mở PR (sẵn sàng review); bạn tự merge trên GitHub.' },
+  commit: { label: 'Commit vào nhánh', hint: 'Commit thay đổi vào nhánh của thẻ, dọn worktree, giữ nhánh.' },
+  merge: { label: 'Merge cục bộ', hint: 'Commit rồi merge vào nhánh gốc trong thư mục dự án, không push (thư mục phải sạch).' },
+  discard: { label: 'Hủy thay đổi', hint: 'Xóa worktree và nhánh (đóng cả PR nếu có). Không hoàn tác được.' },
+};
 
-export function FinishBox({ card, busy, run, onCancel }: { card: Card; busy: boolean; run: Run; onCancel: () => void }) {
-  const [action, setAction] = useState<FinishAction>(card.mode === 'ask' ? 'discard' : 'commit');
+export function FinishBox({
+  card,
+  busy,
+  run,
+  onCancel,
+  flow = 'local',
+}: {
+  card: Card;
+  busy: boolean;
+  run: Run;
+  onCancel: () => void;
+  flow?: 'pr' | 'local';
+}) {
+  const order: FinishAction[] = flow === 'pr' ? ['merge_pr', 'pr', 'commit', 'merge', 'discard'] : ['commit', 'pr', 'merge', 'discard'];
+  const [action, setAction] = useState<FinishAction>(card.mode === 'ask' ? 'discard' : flow === 'pr' ? 'merge_pr' : 'commit');
   const [message, setMessage] = useState(card.title);
   return (
     <div className="finish-box">
       <div className="waiting-title">Hoàn tất thẻ</div>
-      {FINISH_OPTIONS.map((o) => (
-        <label key={o.action} className="radio">
-          <input type="radio" name="finish" checked={action === o.action} onChange={() => setAction(o.action)} />
+      {order.map((a) => (
+        <label key={a} className="radio">
+          <input type="radio" name="finish" checked={action === a} onChange={() => setAction(a)} />
           <span>
-            <strong>{o.label}</strong>
-            <span className="muted small"> — {o.hint}</span>
+            <strong>{FINISH[a].label}</strong>
+            <span className="muted small"> — {FINISH[a].hint}</span>
           </span>
         </label>
       ))}

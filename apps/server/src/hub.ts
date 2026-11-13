@@ -13,9 +13,8 @@ import type {
   CardStatePatch,
   ServerToWeb,
   Card,
-  NotifyKind,
 } from '@localkan/protocol';
-import { cardEvent } from './push.ts';
+import { cardEvent, type CardEventName } from './push.ts';
 import { type Store, toDevice } from './store.ts';
 
 interface Pending {
@@ -44,9 +43,9 @@ export class Hub {
   private readonly web = new Map<string, Set<WebSocket>>();
   private readonly bridges = new Map<string, BridgeConn>();
 
-  private readonly onCardEvent?: (userId: string, kind: NotifyKind, card: Card) => void;
+  private readonly onCardEvent?: (userId: string, event: CardEventName, card: Card) => void;
 
-  constructor(store: Store, opts: { onCardEvent?: (userId: string, kind: NotifyKind, card: Card) => void } = {}) {
+  constructor(store: Store, opts: { onCardEvent?: (userId: string, event: CardEventName, card: Card) => void } = {}) {
     this.store = store;
     this.onCardEvent = opts.onCardEvent;
   }

@@ -7,6 +7,7 @@
 
 use crate::context;
 use crate::git;
+use crate::github;
 use crate::orca::{agent_terminal_from_receipt, output_lines, Orca, OrcaError};
 use crate::paths::which;
 use crate::protocol::*;
@@ -71,6 +72,14 @@ pub struct CardRt {
     pub pending_retry: Option<PendingRetry>,
     /// "question" | "prompt" while the card is in the Human-in-the-loop column.
     pub waiting_kind: Option<String>,
+    /// The board's git workflow when the card started (flow "pr": GitHub pull requests).
+    pub git: GitSettings,
+    /// The task's pull request (flow "pr").
+    pub pr: Option<PrInfo>,
+    /// Last follow-up request: the commit message of that round.
+    pub last_request: Option<String>,
+    /// The agent finished: commit, push and open/update the PR on the next tick.
+    pub publish_pending: bool,
     pub log_seq: i64,
     /// Accumulated card state, re-sent to the server after a reconnect.
     pub last: CardStatePatch,
@@ -101,6 +110,8 @@ pub struct Engine {
     server: Option<(String, String)>,
     /// Live previews (dev server + ngrok) and screenshots per card.
     previews: crate::preview::Previews,
+    /// Cards whose PR is being published or refreshed right now.
+    pr_busy: std::sync::Mutex<HashSet<String>>,
 }
 
 fn bad_params(e: serde_json::Error) -> BridgeError {
@@ -155,6 +166,7 @@ impl Engine {
             mock_cmd,
             server,
             previews: crate::preview::Previews::new(crate::config::home_dir().join("previews")),
+            pr_busy: std::sync::Mutex::new(HashSet::new()),
         }
     }
 
@@ -272,6 +284,22 @@ impl Engine {
                     .map_err(|_| BridgeError { code: "bad_params".into(), message: "Lệnh trình duyệt không hợp lệ".into() })?;
                 self.browser_action(p).await
             }
+            "project.repo" => {
+                let p: ProjectRef = serde_json::from_value(params).map_err(bad_params)?;
+                let repo = match self.project(&p.project_id).await {
+                    Some(pr) => pr.repo_path,
+                    None => git::expand_path(&p.repo_path),
+                };
+                Ok(json!(github::repo_info(&repo, true).await))
+            }
+            "card.pr.refresh" => {
+                let p: CardRef = serde_json::from_value(params).map_err(bad_params)?;
+                self.pr_refresh(&p.card_id).await
+            }
+            "card.pr.sync" => {
+                let p: CardRef = serde_json::from_value(params).map_err(bad_params)?;
+                self.pr_sync(&p.card_id).await
+            }
             "card.screenshot" => {
                 let p: CardScreenshot = serde_json::from_value(params).map_err(bad_params)?;
                 self.screenshot(p).await
@@ -370,7 +398,8 @@ impl Engine {
         };
         self.save_project(p).await;
         self.ensure_coordinator(project_id).await?;
-        Ok(json!({ "baseRef": base_ref, "displayName": display_name, "initialized": initialized }))
+        let repo = github::repo_info(&self.project(project_id).await.map(|p| p.repo_path).unwrap_or_default(), false).await;
+        Ok(json!({ "baseRef": base_ref, "displayName": display_name, "initialized": initialized, "repo": repo }))
     }
 
     async fn orca_repo_id(&self, top: &str) -> Result<String> {
@@ -522,9 +551,29 @@ impl Engine {
         // Name the base explicitly: Orca cannot infer a default base for repos without an
         // origin HEAD (fresh local repos).
         let base_ref = git::current_branch(&project.repo_path).await.unwrap_or(project.base_ref.clone());
-        let worktree_base = self.parent_base(&project.repo_path, &base_ref, p.parent.as_ref()).await?;
+        // PR flow: start from the base branch as it is on GitHub right now, so the PR does not
+        // begin behind (or conflicting with) work merged since the last pull.
+        let mut merge_target = base_ref.clone();
+        let mut from = base_ref.clone();
+        if p.git.pr_flow() {
+            let base = p.git.base_branch.clone().filter(|b| !b.is_empty()).unwrap_or(base_ref.clone());
+            merge_target = base.clone();
+            match github::fetch(&project.repo_path, &base).await {
+                Ok(()) => from = format!("origin/{base}"),
+                Err(e) => {
+                    self.sys(&p.card_id, format!("Không lấy được origin/{base} ({e}); bắt đầu từ nhánh {base} trên máy.")).await;
+                    from = base.clone();
+                }
+            }
+        }
+        let worktree_base = self.parent_base(&project.repo_path, &from, p.parent.as_ref()).await?;
         context::ensure_excluded(&project.repo_path).await;
-        let name = branch_name(&p.card_id, &p.title);
+        let wanted_branch = p.git.pr_flow().then(|| github::task_branch(&p.git.branch_prefix, &p.card_id, &p.title));
+        let name = match &wanted_branch {
+            // Orca turns "/" into "-" in worktree names; the branch is renamed right after.
+            Some(b) => b.replace('/', "-"),
+            None => branch_name(&p.card_id, &p.title),
+        };
         let wt = orca
             .call_timeout(
                 &[
@@ -544,7 +593,19 @@ impl Engine {
             .context("không tạo được worktree")?;
         let w = &wt["worktree"];
         let path = s(&w["path"]).ok_or_else(|| anyhow!("Orca không trả đường dẫn worktree"))?;
-        let branch = s(&w["branch"]).map(|b| b.trim_start_matches("refs/heads/").to_string());
+        let mut branch = s(&w["branch"]).map(|b| b.trim_start_matches("refs/heads/").to_string());
+        if let (Some(wanted), Some(current)) = (&wanted_branch, &branch) {
+            if wanted != current {
+                let mut target = wanted.clone();
+                if git::branch_exists(&project.repo_path, &target).await {
+                    target = format!("{wanted}-{}", &p.card_id.chars().filter(|c| c.is_ascii_alphanumeric()).skip(4).take(4).collect::<String>());
+                }
+                match git::run(&path, &["branch", "-m", &target]).await {
+                    Ok(_) => branch = Some(target),
+                    Err(e) => tracing::warn!("rename branch: {e:#}"),
+                }
+            }
+        }
         let base = s(&w["baseRef"]).unwrap_or(worktree_base.clone());
 
         let log_seq = self.store.last_seq(&p.card_id);
@@ -557,7 +618,8 @@ impl Engine {
             worktree_path: Some(path.clone()),
             branch: branch.clone(),
             base_ref: base,
-            merge_target: Some(base_ref.clone()),
+            merge_target: Some(merge_target.clone()),
+            git: p.git.clone(),
             active: true,
             log_seq,
             ..Default::default()
@@ -1429,6 +1491,7 @@ impl Engine {
             c.read_cursor = None;
             c.waiting_kind = None;
             c.pending_retry = None;
+            c.last_request = Some(p.text.clone());
         })
         .await;
         self.sys(&card.card_id, "Gửi yêu cầu sửa cho agent.").await;
@@ -1549,20 +1612,24 @@ impl Engine {
             committed = git::commit_all(&wt, &message).await?;
         }
         let mut pr_url: Option<String> = None;
+        let mut merged_pr: Option<u64> = None;
         match action {
-            "pr" => {
-                git::run(&wt, &["push", "-u", "origin", &branch]).await.context("push nhánh thất bại (repo có remote origin chưa?)")?;
-                let out = crate::paths::command("gh")
-                    .current_dir(&wt)
-                    .args(["pr", "create", "--head", &branch, "--base", &target, "--title", &message, "--body"])
-                    .arg(format!("{}\n\n_Tạo bởi Localkan từ thẻ “{}”._", card.last.summary.clone().flatten().unwrap_or_default(), card.title))
-                    .output()
-                    .await
-                    .context("không chạy được gh (GitHub CLI)")?;
-                if !out.status.success() {
-                    bail!("gh pr create thất bại: {}", String::from_utf8_lossy(&out.stderr).trim());
+            "pr" | "merge_pr" => {
+                if !exists {
+                    bail!("Worktree của thẻ không còn, không đẩy được lên GitHub.");
                 }
-                pr_url = String::from_utf8_lossy(&out.stdout).lines().rev().find(|l| l.starts_with("http")).map(String::from);
+                let pr = self.ensure_pr(&card, &wt, &branch, &target, false).await?;
+                if pr.draft {
+                    github::pr_ready(&wt, &pr.number.to_string()).await?;
+                }
+                if action == "merge_pr" {
+                    let method = if card.git.pr_flow() { card.git.merge_method.clone() } else { p.git.merge_method.clone() };
+                    github::pr_merge(&wt, &pr.number.to_string(), &method).await.map_err(|e| {
+                        anyhow!("GitHub chưa cho merge PR #{}: {e:#}. Xem PR trên GitHub (CI bắt buộc, review, xung đột…).", pr.number)
+                    })?;
+                    merged_pr = Some(pr.number);
+                }
+                pr_url = Some(pr.url.clone());
             }
             "merge" => {
                 let repo = &project.repo_path;
@@ -1601,7 +1668,17 @@ impl Engine {
             }
         }
         if action == "discard" {
+            if let Some(pr) = card.pr.as_ref().filter(|pr| pr.state == "open") {
+                let _ = github::pr_close(&project.repo_path, &pr.number.to_string()).await;
+                github::delete_remote_branch(&project.repo_path, &branch).await;
+            }
             let _ = git::raw(&project.repo_path, &["branch", "-D", &branch]).await;
+        }
+        let mut base_note = String::new();
+        if merged_pr.is_some() {
+            let _ = git::raw(&project.repo_path, &["branch", "-D", &branch]).await;
+            github::delete_remote_branch(&project.repo_path, &branch).await;
+            base_note = self.update_local_base(&project.repo_path, &target).await;
         }
         self.update_card(&card.card_id, |c| {
             c.active = false;
@@ -1611,20 +1688,23 @@ impl Engine {
             c.last.status = Some("done".into());
             c.last.run_state = Some("idle".into());
             c.last.waiting = Some(None);
+            c.last.pr = Some(None);
+            c.publish_pending = false;
         })
         .await;
 
         let summary = match action {
             "commit" if committed => format!("Đã commit vào nhánh {branch}."),
             "commit" => format!("Không có thay đổi mới để commit; nhánh {branch} được giữ lại."),
-            "pr" => format!("Đã tạo Pull Request từ nhánh {branch}."),
+            "pr" => format!("Đã mở Pull Request từ nhánh {branch}; merge trên GitHub khi sẵn sàng."),
+            "merge_pr" => format!("Đã merge PR #{} vào {target} trên GitHub. {base_note}", merged_pr.unwrap_or(0)).trim().to_string(),
             "merge" => format!("Đã merge {branch} vào {target}."),
             _ => format!("Đã hủy thay đổi và xóa nhánh {branch}."),
         };
         let status = match action {
             "commit" => "committed",
             "pr" => "pr",
-            "merge" => "merged",
+            "merge" | "merge_pr" => "merged",
             _ => "discarded",
         };
         if let Err(e) = context::set_status(&project.repo_path, &card.card_id, status, &now()).await {
@@ -1647,12 +1727,236 @@ impl Engine {
         Ok(json!({ "prUrl": pr_url, "message": summary }))
     }
 
+    // -- GitHub pull requests (flow "pr") --------------------------------------
+
+    /// Publish finished work and refresh open PRs. Runs every tick; network work is spawned.
+    async fn pr_tick(self: &Arc<Self>, n: u64) {
+        let cards: Vec<CardRt> = self.cards.lock().await.values().filter(|c| c.active && !c.running).cloned().collect();
+        for c in cards {
+            let poll = c.pr.as_ref().is_some_and(|pr| pr.state == "open") && n % 30 == 0;
+            if !(c.publish_pending || poll) || !self.pr_claim(&c.card_id) {
+                continue;
+            }
+            let me = self.clone();
+            tokio::spawn(async move {
+                let id = c.card_id.clone();
+                if c.publish_pending {
+                    me.update_card(&id, |c| c.publish_pending = false).await;
+                    if let Err(e) = me.publish_pr(&id).await {
+                        me.sys(&id, format!("Chưa đẩy được lên GitHub: {e:#}")).await;
+                    }
+                } else if let Err(e) = me.refresh_pr_inner(&id).await {
+                    tracing::debug!(card = id, "pr refresh: {e:#}");
+                }
+                me.pr_busy.lock().unwrap().remove(&id);
+            });
+        }
+    }
+
+    fn pr_claim(&self, card_id: &str) -> bool {
+        self.pr_busy.lock().unwrap().insert(card_id.to_string())
+    }
+
+    /// Commit the agent's work, push the task branch, and open a draft PR (or update the PR).
+    async fn publish_pr(&self, card_id: &str) -> Result<()> {
+        let card = self.card(card_id).await?;
+        let wt = card.worktree_path.clone().filter(|w| Path::new(w).exists()).ok_or_else(|| anyhow!("worktree không còn"))?;
+        let branch = card.branch.clone().ok_or_else(|| anyhow!("thẻ chưa có nhánh"))?;
+        let base = card.merge_target.clone().unwrap_or(card.base_ref.clone());
+        let pr = self.ensure_pr(&card, &wt, &branch, &base, true).await?;
+        self.sys(card_id, format!("Đã đẩy lên GitHub: PR #{}{} → {}.", pr.number, if pr.draft { " (nháp)" } else { "" }, pr.base)).await;
+        Ok(())
+    }
+
+    /// Commit leftovers, push, and return the task's open PR (creating it when missing).
+    async fn ensure_pr(&self, card: &CardRt, wt: &str, branch: &str, base: &str, draft: bool) -> Result<PrInfo> {
+        let message = match (&card.pr, &card.last_request) {
+            (Some(_), Some(req)) => format!("Cập nhật theo review: {}", first_line(req, 60)),
+            _ => card.title.clone(),
+        };
+        git::commit_all(wt, &message).await?;
+        let existing = match &card.pr {
+            Some(pr) if pr.state == "open" => Some(pr.clone()),
+            _ => github::pr_for_branch(wt, branch).await,
+        };
+        if existing.is_none() && github::ahead(wt, &format!("origin/{base}")).await == 0 && github::ahead(wt, base).await == 0 {
+            bail!("chưa có thay đổi nào so với {base} để mở PR");
+        }
+        github::push(wt, branch).await?;
+        let pr = match existing {
+            Some(pr) => github::pr_view(wt, &pr.number.to_string()).await?,
+            None => {
+                let body = self.pr_body(card, wt).await;
+                let url = github::pr_create(wt, base, branch, &card.title, &body, draft).await?;
+                github::pr_view(wt, &url).await?
+            }
+        };
+        self.set_pr(&card.card_id, Some(pr.clone())).await;
+        Ok(pr)
+    }
+
+    /// PR description: the agent's summary and handoff note.
+    async fn pr_body(&self, card: &CardRt, wt: &str) -> String {
+        let mut body = String::new();
+        if let Some(summary) = card.last.summary.clone().flatten().filter(|s| !s.trim().is_empty()) {
+            body.push_str(&format!("## Tóm tắt\n\n{}\n\n", summary.trim()));
+        }
+        if let Ok(note) = std::fs::read_to_string(Path::new(wt).join(context::AGENT_HANDOFF_FILE)) {
+            let note: String = note.trim().chars().take(4000).collect();
+            if !note.is_empty() {
+                body.push_str(&format!("## Ghi chú bàn giao\n\n{note}\n\n"));
+            }
+        }
+        body.push_str(&format!("_Tạo bởi Localkan từ việc “{}”._", card.title));
+        body
+    }
+
+    /// Store the PR on the card and tell the server when it changed.
+    async fn set_pr(&self, card_id: &str, pr: Option<PrInfo>) {
+        let before = self.card(card_id).await.ok().and_then(|c| c.pr);
+        let changed = match (&before, &pr) {
+            (Some(a), Some(b)) => !a.same_as(b),
+            (None, None) => false,
+            _ => true,
+        };
+        self.update_card(card_id, |c| c.pr = pr.clone()).await;
+        if changed {
+            let mut patch = CardStatePatch::new(card_id);
+            patch.pr = Some(pr);
+            self.emit(patch).await;
+        }
+    }
+
+    async fn pr_refresh(&self, card_id: &str) -> Result<Value> {
+        if !self.pr_claim(card_id) {
+            // A refresh or publish is already running; report what we know.
+            return Ok(json!({ "pr": self.card(card_id).await?.pr }));
+        }
+        let res = self.refresh_pr_inner(card_id).await;
+        self.pr_busy.lock().unwrap().remove(card_id);
+        res?;
+        Ok(json!({ "pr": self.card(card_id).await.ok().and_then(|c| c.pr) }))
+    }
+
+    /// Read the PR from GitHub; a PR merged there (by you, on github.com) completes the task.
+    async fn refresh_pr_inner(&self, card_id: &str) -> Result<()> {
+        let card = self.card(card_id).await?;
+        if !card.active {
+            return Ok(());
+        }
+        let wt = card.worktree_path.clone().filter(|w| Path::new(w).exists());
+        let project = self.project(&card.project_id).await.ok_or_else(|| anyhow!("không thấy bảng"))?;
+        let dir = wt.clone().unwrap_or(project.repo_path.clone());
+        let pr = match &card.pr {
+            Some(pr) => github::pr_view(&dir, &pr.number.to_string()).await?,
+            None => match card.branch.as_deref() {
+                Some(b) => match github::pr_for_branch(&dir, b).await {
+                    Some(pr) => pr,
+                    None => return Ok(()),
+                },
+                None => return Ok(()),
+            },
+        };
+        if pr.state == "merged" {
+            return self.complete_merged(&card, pr).await;
+        }
+        self.set_pr(card_id, Some(pr)).await;
+        Ok(())
+    }
+
+    /// The PR was merged on GitHub: clean up like "Merge PR" would and mark the task done.
+    async fn complete_merged(&self, card: &CardRt, pr: PrInfo) -> Result<()> {
+        let project = self.project(&card.project_id).await.ok_or_else(|| anyhow!("không thấy bảng"))?;
+        let target = card.merge_target.clone().unwrap_or(card.base_ref.clone());
+        self.previews.stop(&card.card_id).await;
+        self.release(card).await;
+        if let Some(wt) = card.worktree_path.clone().filter(|w| Path::new(w).exists()) {
+            let sel = format!("path:{wt}");
+            if self.orca()?.call(&["worktree", "rm", "--worktree", &sel]).await.is_err() {
+                let _ = git::raw(&project.repo_path, &["worktree", "remove", "--force", &wt]).await;
+            }
+        }
+        if let Some(b) = &card.branch {
+            let _ = git::raw(&project.repo_path, &["branch", "-D", b]).await;
+            github::delete_remote_branch(&project.repo_path, b).await;
+        }
+        let note = self.update_local_base(&project.repo_path, &target).await;
+        let _ = context::set_status(&project.repo_path, &card.card_id, "merged", &now()).await;
+        let summary = format!("PR #{} đã được merge vào {target} trên GitHub. {note}", pr.number).trim().to_string();
+        self.update_card(&card.card_id, |c| {
+            c.active = false;
+            c.running = false;
+            c.waiting_kind = None;
+            c.pr = None;
+            c.publish_pending = false;
+        })
+        .await;
+        self.sys(&card.card_id, summary.clone()).await;
+        let mut patch = CardStatePatch::new(&card.card_id);
+        patch.status = Some("done".into());
+        patch.run_state = Some("idle".into());
+        patch.waiting = Some(None);
+        patch.preview = Some(None);
+        patch.pr = Some(None);
+        patch.pr_url = Some(Some(pr.url));
+        patch.summary = Some(Some(summary));
+        self.emit(patch).await;
+        Ok(())
+    }
+
+    /// After a merge on GitHub: fast-forward the base branch in the project folder when that is
+    /// safe (it is checked out and clean). Returns a note for the summary.
+    async fn update_local_base(&self, repo: &str, base: &str) -> String {
+        if github::fetch(repo, base).await.is_err() {
+            return String::new();
+        }
+        let current = git::current_branch(repo).await;
+        if current.as_deref() != Some(base) {
+            return format!("Thư mục dự án đang ở nhánh {}, chưa cập nhật {base}.", current.unwrap_or_default());
+        }
+        if git::has_changes(repo).await.unwrap_or(true) {
+            return format!("Thư mục dự án còn thay đổi chưa commit nên chưa cập nhật {base}.");
+        }
+        match git::raw(repo, &["merge", "--ff-only", &format!("origin/{base}")]).await {
+            Ok(o) if o.ok => format!("Đã cập nhật {base} trong thư mục dự án."),
+            _ => format!("Không fast-forward được {base} trong thư mục dự án; hãy git pull bằng tay."),
+        }
+    }
+
+    /// Bring the task branch up to date with origin/<base>. On conflicts the merge is undone.
+    async fn pr_sync(&self, card_id: &str) -> Result<Value> {
+        let card = self.card(card_id).await?;
+        let wt = card.worktree_path.clone().filter(|w| Path::new(w).exists()).ok_or_else(|| anyhow!("Worktree của thẻ không còn."))?;
+        let base = card.merge_target.clone().unwrap_or(card.base_ref.clone());
+        let project = self.project(&card.project_id).await.ok_or_else(|| anyhow!("Không thấy bảng"))?;
+        github::fetch(&project.repo_path, &base).await.map_err(|e| anyhow!("Không lấy được origin/{base}: {e:#}"))?;
+        git::commit_all(&wt, &format!("Lưu thay đổi trước khi cập nhật theo {base}")).await?;
+        let out = git::raw(&wt, &["merge", "--no-edit", &format!("origin/{base}")]).await?;
+        if !out.ok {
+            let detail = format!("{}{}", out.stdout, out.stderr);
+            let _ = git::raw(&wt, &["merge", "--abort"]).await;
+            if detail.contains("CONFLICT") {
+                return Ok(json!({ "ok": false, "conflict": true, "message": format!("Nhánh xung đột với origin/{base}; đã hủy merge. Nhờ agent xử lý xung đột.") }));
+            }
+            bail!("Không merge được origin/{base}: {}", first_line(&detail, 200));
+        }
+        if let Some(branch) = &card.branch {
+            if card.pr.is_some() {
+                github::push(&wt, branch).await?;
+                let _ = self.refresh_pr_inner(card_id).await;
+            }
+        }
+        self.sys(card_id, format!("Đã cập nhật nhánh theo origin/{base}.")).await;
+        Ok(json!({ "ok": true, "conflict": false, "message": format!("Đã cập nhật theo origin/{base}.") }))
+    }
+
     // -- supervision ---------------------------------------------------------
 
     /// One supervision pass: read each board's orchestration mailbox, then each running
     /// card's output and observed state.
     pub async fn tick(self: &Arc<Self>) {
         let n = self.ticks.fetch_add(1, Ordering::Relaxed);
+        self.pr_tick(n).await;
         let cards: Vec<CardRt> = self
             .cards
             .lock()
@@ -1796,10 +2100,13 @@ impl Engine {
 
     /// The agent finished its dispatch (reported or observed): move the card to Review.
     async fn settle(&self, card: &CardRt, ok: bool, summary: Option<String>) {
+        // PR flow: push the work and open (or update) the PR so CI runs while you review.
+        let publish = ok && card.git.pr_flow() && card.mode != "ask" && (card.git.auto_draft_pr || card.pr.is_some());
         self.update_card(&card.card_id, |c| {
             c.running = false;
             c.waiting_kind = None;
             c.pending_retry = None;
+            c.publish_pending = publish;
         })
         .await;
         if let (Some(d), Ok(orca)) = (&card.dispatch_id, self.orca()) {
@@ -2132,6 +2439,12 @@ fn fold_vietnamese(ch: char) -> char {
 /// Worktree/branch name: unique per card, readable when the title is ASCII.
 pub fn branch_name(card_id: &str, title: &str) -> String {
     let short: String = card_id.chars().filter(|c| c.is_ascii_alphanumeric()).take(8).collect();
+    let slug = slug(title, 24);
+    if slug.is_empty() { format!("lk-{short}") } else { format!("lk-{short}-{slug}") }
+}
+
+/// Lowercase ASCII slug of a title (Vietnamese accents folded), at most about `max` chars.
+pub fn slug(title: &str, max: usize) -> String {
     let mut slug = String::new();
     for ch in title.to_lowercase().chars().map(fold_vietnamese) {
         if ch.is_ascii_alphanumeric() {
@@ -2139,12 +2452,11 @@ pub fn branch_name(card_id: &str, title: &str) -> String {
         } else if !slug.ends_with('-') && !slug.is_empty() {
             slug.push('-');
         }
-        if slug.len() >= 24 {
+        if slug.len() >= max {
             break;
         }
     }
-    let slug = slug.trim_matches('-');
-    if slug.is_empty() { format!("lk-{short}") } else { format!("lk-{short}-{slug}") }
+    slug.trim_matches('-').to_string()
 }
 
 const COMMON_RULES: &str = "Rules from Localkan (the reviewer's Kanban board):
@@ -2265,4 +2577,10 @@ mod tests {
         assert_eq!(branch_name("3f2a9c1d-aaaa", "Sửa lỗi đăng nhập"), "lk-3f2a9c1d-sua-loi-dang-nhap");
         assert_eq!(branch_name("3f2a9c1d-aaaa", "!!!"), "lk-3f2a9c1d");
     }
+}
+
+/// First non-empty line, cut to `max` characters.
+fn first_line(s: &str, max: usize) -> String {
+    let line = s.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    if line.chars().count() > max { format!("{}…", line.chars().take(max).collect::<String>()) } else { line.to_string() }
 }

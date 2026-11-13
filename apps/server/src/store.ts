@@ -17,7 +17,10 @@ import type {
   ProjectStatus,
   RunState,
   WaitingInfo,
+  GitSettings,
+  PrInfo,
 } from '@localkan/protocol';
+import { DEFAULT_GIT_SETTINGS } from '@localkan/protocol';
 
 // -- documents ----------------------------------------------------------------
 
@@ -60,6 +63,7 @@ interface ProjectDoc {
   status: ProjectStatus;
   error: string | null;
   preview?: PreviewInfo | null;
+  git?: Partial<GitSettings>;
   createdAt: Date;
 }
 
@@ -83,6 +87,7 @@ interface CardDoc {
   parentCardId: string | null;
   preview: PreviewInfo | null;
   autoPreview?: boolean;
+  pr?: PrInfo | null;
   attachments: Attachment[];
   createdAt: Date;
   updatedAt: Date;
@@ -123,6 +128,7 @@ export function toProject(p: ProjectDoc): Project {
     status: p.status,
     error: p.error ?? null,
     preview: p.preview ?? null,
+    git: { ...DEFAULT_GIT_SETTINGS, ...(p.git ?? {}) },
     createdAt: iso(p.createdAt)!,
   };
 }
@@ -148,6 +154,7 @@ export function toCard(c: CardDoc): Card {
     parentCardId: c.parentCardId ?? null,
     preview: c.preview ?? null,
     autoPreview: c.autoPreview ?? false,
+    pr: c.pr ?? null,
     attachments: c.attachments ?? [],
     createdAt: iso(c.createdAt)!,
     updatedAt: iso(c.updatedAt)!,
@@ -326,8 +333,13 @@ export class Store {
     });
   }
 
-  async updateProject(id: string, patch: Partial<Pick<ProjectDoc, 'status' | 'baseRef' | 'error' | 'preview'>>) {
+  async updateProject(id: string, patch: Partial<Pick<ProjectDoc, 'status' | 'baseRef' | 'error' | 'preview' | 'git'>>) {
     await this.projects.updateOne({ _id: id }, { $set: patch });
+  }
+
+  /** Whether the board's git settings were ever chosen (boards from before keep `local`). */
+  async hasGitSettings(id: string) {
+    return !!(await this.projects.findOne({ _id: id, git: { $exists: true } }, { projection: { _id: 1 } }));
   }
 
   /** Delete a board and its cards; returns the deleted card ids (to remove their files). */

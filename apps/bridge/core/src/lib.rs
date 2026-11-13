@@ -10,6 +10,7 @@ pub mod config;
 pub mod context;
 pub mod engine;
 pub mod git;
+pub mod github;
 pub mod link;
 pub mod orca;
 pub mod paths;

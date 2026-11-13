@@ -13,6 +13,7 @@ import { ProjectDialog } from './components/ProjectDialog.tsx';
 import { Toasts, useToasts } from './components/Toasts.tsx';
 import { MobileApp } from './mobile/MobileApp.tsx';
 import { NotificationsDialog } from './components/NotificationsDialog.tsx';
+import { GitSettingsDialog } from './components/GitSettingsDialog.tsx';
 import { currentSubscription, pushSupport, syncPush } from './push.ts';
 
 const LAST_PROJECT_KEY = 'localkan.lastProject';
@@ -68,7 +69,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
   const [logs, setLogs] = useState<Record<string, LogLine[]>>({});
   const [projectId, setProjectId] = useState<string | null>(readLastProject);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<'devices' | 'project' | 'memory' | 'preview' | 'browser' | 'notify' | null>(null);
+  const [dialog, setDialog] = useState<'devices' | 'project' | 'memory' | 'preview' | 'browser' | 'notify' | 'git' | null>(null);
   const [pushOn, setPushOn] = useState<boolean | null>(null);
   const [live, setLive] = useState(false);
   const toasts = useToasts();
@@ -319,6 +320,16 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
             🌐<span className="topbar-label"> Trình duyệt</span>
           </button>
         )}
+        {project && (
+          <button
+            className="btn ghost"
+            onClick={() => setDialog('git')}
+            title={project.git.flow === 'pr' ? `Git: Pull Request vào ${project.git.baseBranch ?? project.baseRef ?? 'main'}` : 'Git: merge cục bộ'}
+            aria-label="Cài đặt git"
+          >
+            ⑂<span className="topbar-label"> {project.git.flow === 'pr' ? 'PR' : 'Git'}</span>
+          </button>
+        )}
         <div className="spacer" />
         <button
           className="btn ghost"
@@ -388,6 +399,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
       )}
 
       {dialog === 'notify' && <NotificationsDialog onClose={() => setDialog(null)} toasts={toasts} />}
+      {dialog === 'git' && project && <GitSettingsDialog project={project} onClose={() => setDialog(null)} toasts={toasts} />}
       {dialog === 'memory' && project && <MemoryDialog project={project} onClose={() => setDialog(null)} toasts={toasts} />}
       {dialog === 'browser' && project && (
         <Dialog title={`Trình duyệt dùng chung · ${project.name}`} onClose={() => setDialog(null)} wide>

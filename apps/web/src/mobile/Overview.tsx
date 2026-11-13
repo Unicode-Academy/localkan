@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AGENT_LABELS, type Card, type Device, type Project } from '@localkan/protocol';
 import { api } from '../api.ts';
+import { ciSummary } from '../components/PrPanel.tsx';
 import type { ToastApi } from '../components/Toasts.tsx';
 import { badge, bucket, byUrgency, splitOptions, timeAgo, type Bucket } from './status.ts';
 
@@ -156,6 +157,13 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
         <div className="m-card-title">{card.title}</div>
         {kind === 'you' && card.status === 'review' && card.summary && <p className="m-card-ok">✓ {card.summary}</p>}
         {kind === 'failed' && card.error && <p className="m-card-err">{card.error.split('\n')[0]}</p>}
+        {card.pr && card.pr.state === 'open' && (
+          <p className={`m-card-pr ${ciSummary(card.pr).tone}`}>
+            PR #{card.pr.number}
+            {card.pr.draft ? ' · nháp' : ''} · {ciSummary(card.pr).label}
+            {card.pr.mergeable === 'conflicting' ? ' · xung đột' : ''}
+          </p>
+        )}
         {card.preview?.status === 'running' && <p className="m-card-ok small">● Đang có bản xem trước{card.preview.url ? ' (mở được trên điện thoại)' : ''}</p>}
         <div className="m-meta">
           {AGENT_LABELS[card.agent]}

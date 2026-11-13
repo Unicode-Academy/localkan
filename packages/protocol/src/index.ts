@@ -160,6 +160,8 @@ export interface Card {
   summary: string | null;
   error: string | null;
   prUrl: string | null;
+  /** Open pull request of this task (flow `pr`), with its CI checks. */
+  pr: PrInfo | null;
   /** Card this one continues from: its handoff note is passed on, and when its branch is not
    *  merged yet the new worktree starts from that branch. */
   parentCardId: string | null;
@@ -183,7 +185,72 @@ export interface Project {
   error: string | null;
   /** Preview of the project folder itself (the checked-out branch, usually main). */
   preview: PreviewInfo | null;
+  /** How finished work reaches the repo (local merge, or GitHub pull requests). */
+  git: GitSettings;
   createdAt: string;
+}
+
+/** `pr`: each task gets a branch from origin, a GitHub pull request and CI; merging the PR on
+ *  GitHub is what ships it. `local`: merge into the branch checked out in the project folder. */
+export type GitFlow = 'pr' | 'local';
+export type MergeMethod = 'squash' | 'merge' | 'rebase';
+
+export interface GitSettings {
+  flow: GitFlow;
+  /** Branch new work starts from (fetched fresh from origin) and PRs target. Null: the branch
+   *  checked out in the project folder. */
+  baseBranch: string | null;
+  /** Prefix for task branches, e.g. `feature/`. */
+  branchPrefix: string;
+  /** How Localkan merges a PR on GitHub. */
+  mergeMethod: MergeMethod;
+  /** Open a draft PR as soon as the agent finishes, so CI runs before your review. */
+  autoDraftPr: boolean;
+}
+
+export const DEFAULT_GIT_SETTINGS: GitSettings = {
+  flow: 'local',
+  baseBranch: null,
+  branchPrefix: 'feature/',
+  mergeMethod: 'squash',
+  autoDraftPr: true,
+};
+
+/** The project folder's git remote, as seen from the bridge machine. */
+export interface RepoInfo {
+  remoteUrl: string | null;
+  github: boolean;
+  /** Branch checked out in the project folder. */
+  currentBranch: string | null;
+  /** origin's default branch (origin/HEAD). */
+  defaultBranch: string | null;
+  /** Branches on origin (after a fetch). */
+  remoteBranches: string[];
+  /** GitHub CLI installed and logged in on the bridge machine. */
+  ghReady: boolean;
+}
+
+/** CI checks of a pull request (GitHub checks and commit statuses). */
+export interface PrChecks {
+  total: number;
+  passed: number;
+  failed: number;
+  pending: number;
+  /** Names of failing checks. */
+  failing: string[];
+}
+
+/** A task's GitHub pull request, refreshed by the bridge while the task is in review. */
+export interface PrInfo {
+  number: number;
+  url: string;
+  state: 'open' | 'merged' | 'closed';
+  draft: boolean;
+  /** Whether GitHub can merge it into its base without conflicts. */
+  mergeable: 'mergeable' | 'conflicting' | 'unknown';
+  base: string;
+  checks: PrChecks;
+  checkedAt: string;
 }
 
 export interface BridgeInfo {
@@ -266,7 +333,11 @@ export interface ReviewComment {
  *  prompt it shows (e.g. "Yes, I trust this folder"), falling back to Enter / Esc. */
 export type TerminalKey = 'approve' | 'reject' | 'enter' | 'esc' | 'up' | 'down' | 'tab' | 'interrupt';
 
-export type FinishAction = 'commit' | 'pr' | 'merge' | 'discard';
+/** `merge_pr`: merge the task's pull request on GitHub (your pipeline deploys from there).
+ *  `pr`: open (or mark ready) the pull request and leave the merge to you on GitHub.
+ *  `merge`: merge into the branch checked out in the project folder (no push).
+ *  `commit`: keep the work on its branch. `discard`: drop it (closes an open PR). */
+export type FinishAction = 'merge_pr' | 'commit' | 'pr' | 'merge' | 'discard';
 
 // ---------------------------------------------------------------------------
 // Server <-> bridge wire protocol (JSON over WebSocket)
@@ -276,8 +347,14 @@ export interface BridgeMethods {
   /** Register a local git repo with Orca and prepare its coordinator. */
   'project.register': {
     params: { projectId: string; repoPath: string };
-    result: { baseRef: string | null; displayName: string };
+    result: { baseRef: string | null; displayName: string; repo: RepoInfo };
   };
+  /** Remote, branches and GitHub CLI state of a project folder (for the board's git settings). */
+  'project.repo': { params: { projectId: string; repoPath: string }; result: RepoInfo };
+  /** Fetch the task's pull request and CI checks now (also done periodically). */
+  'card.pr.refresh': { params: { cardId: string }; result: { pr: PrInfo | null } };
+  /** Bring the task branch up to date with origin/<base> (merge) and push. */
+  'card.pr.sync': { params: { cardId: string }; result: { ok: boolean; conflict: boolean; message: string } };
   /** Create the card's worktree and dispatch the agent. Returns once accepted; progress
    *  arrives as `card.state` / `card.log` events. */
   'card.start': {
@@ -293,6 +370,8 @@ export interface BridgeMethods {
       attachments: Pick<Attachment, 'id' | 'name' | 'mime'>[];
       /** The card this one continues from. */
       parent: { cardId: string; title: string; branch: string | null } | null;
+      /** The board's git settings (base branch, branch prefix, PR flow). */
+      git: GitSettings;
     };
     result: { accepted: true };
   };
@@ -340,7 +419,7 @@ export interface BridgeMethods {
   'card.screen': { params: { cardId: string }; result: { lines: string[] } };
   'card.log': { params: { cardId: string; after?: number }; result: { lines: LogLine[] } };
   'card.finish': {
-    params: { cardId: string; action: FinishAction; commitMessage: string };
+    params: { cardId: string; action: FinishAction; commitMessage: string; git: GitSettings };
     result: { prUrl?: string; message: string };
   };
   'card.stop': { params: { cardId: string }; result: { ok: true } };
@@ -360,6 +439,9 @@ export interface CardStatePatch {
   summary?: string | null;
   error?: string | null;
   preview?: PreviewInfo | null;
+  pr?: PrInfo | null;
+  /** Set by the bridge when it sees the PR merged on GitHub (the task is then done). */
+  prUrl?: string | null;
 }
 
 export interface BridgeEvents {

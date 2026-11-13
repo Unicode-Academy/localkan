@@ -12,6 +12,7 @@ import { api } from '../api.ts';
 import { NewCardDialog } from './NewCardDialog.tsx';
 import { RunBadge } from './RunBadge.tsx';
 import type { ToastApi } from './Toasts.tsx';
+import { ciSummary } from './PrPanel.tsx';
 
 const COLUMN_HINTS: Record<CardStatus, string> = {
   todo: 'Kéo sang In Progress để giao cho agent',
@@ -160,6 +161,11 @@ function CardTile({
       <div className="tile-meta">
         <span className={`agent agent-${card.agent}`}>{AGENT_LABELS[card.agent]}</span>
         {card.mode === 'ask' && <span className="tag">Hỏi</span>}
+        {card.pr && card.pr.state === 'open' && (
+          <span className={`tag pr-ci ${ciSummary(card.pr).tone}`} title={`PR #${card.pr.number}${card.pr.draft ? ' (nháp)' : ''}`}>
+            PR #{card.pr.number} {ciSummary(card.pr).label.split(' ')[0]}
+          </span>
+        )}
         {card.attachments.length > 0 && <span className="tag" title="Ảnh đính kèm">🖼 {card.attachments.length}</span>}
         {card.preview?.status === 'running' && (
           <span className="tag preview-tag" title={card.preview.url ? 'Đang xem trước, có link từ xa' : 'Đang xem trước trên máy'}>

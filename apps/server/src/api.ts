@@ -15,6 +15,8 @@ import {
   type BrowserAction,
   type NotifyPrefs,
   type PushSubscriptionJSON,
+  type GitSettings,
+  DEFAULT_GIT_SETTINGS,
 } from '@localkan/protocol';
 import { hashPassword, newPairingCode, newToken, normalizePairingCode, sha256, verifyPassword } from './auth.ts';
 import { BridgeRequestError, type Hub } from './hub.ts';
@@ -225,6 +227,15 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     try {
       const res = await hub.request(deviceId, 'project.register', { projectId, repoPath }, 90_000);
       await store.updateProject(projectId, { status: 'ready', baseRef: res.baseRef, error: null });
+      // First registration: a GitHub repo (with the GitHub CLI ready) defaults to the PR flow
+      // from the branch the folder is on.
+      if (res.repo && !(await store.hasGitSettings(projectId))) {
+        const r = res.repo;
+        const base = r.currentBranch && r.remoteBranches.includes(r.currentBranch) ? r.currentBranch : r.defaultBranch;
+        await store.updateProject(projectId, {
+          git: { ...DEFAULT_GIT_SETTINGS, flow: r.github && r.ghReady ? 'pr' : 'local', baseBranch: base ?? null },
+        });
+      }
     } catch (err) {
       await store.updateProject(projectId, { status: 'error', error: (err as Error).message });
     }
@@ -257,6 +268,21 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       ...previewing.map((cardId) => hub.request(p.deviceId, 'card.preview.stop', { cardId }, 15_000)),
     ]);
     return c.json({ ok: true });
+  });
+
+  // Git settings of a board: how finished work reaches the repo.
+  api.get('/projects/:id/repo', async (c) => {
+    const p = await ownProject(c, c.req.param('id'));
+    return c.json(await hub.request(p.deviceId, 'project.repo', { projectId: p.id, repoPath: p.repoPath }, 90_000));
+  });
+
+  api.put('/projects/:id/git', async (c) => {
+    const p = await ownProject(c, c.req.param('id'));
+    const git = parseGitSettings(await body<Partial<GitSettings>>(c));
+    await store.updateProject(p.id, { git });
+    const project = (await store.getProject(p.id))!;
+    hub.sendToUser(c.get('userId'), { type: 'project.updated', project });
+    return c.json(project);
   });
 
   // Project memory and handoff notes live on the bridge machine (repo's .localkan/ folder);
@@ -484,7 +510,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     if (card.status !== 'todo') throw new HttpError(409, 'Chỉ khởi chạy được thẻ ở cột To Do.');
     const project = await ownProject(c, card.projectId);
     if (project.status !== 'ready') throw new HttpError(409, 'Bảng chưa sẵn sàng (repo chưa được đăng ký với Orca).');
-    pushCard(userId, await store.updateCard(card.id, { status: 'in_progress', runState: 'starting', error: null, summary: null }));
+    pushCard(userId, await store.updateCard(card.id, { status: 'in_progress', runState: 'starting', error: null, summary: null, pr: null }));
     try {
       await hub.request(deviceId, 'card.start', {
         cardId: card.id,
@@ -496,6 +522,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
         mode: card.mode,
         attachments: card.attachments.map(({ id, name, mime }) => ({ id, name, mime })),
         parent: await parentRef(card),
+        git: project.git,
       });
     } catch (err) {
       pushCard(userId, await store.updateCard(card.id, { status: 'todo', runState: 'failed', error: (err as Error).message }));
@@ -512,6 +539,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     if (card.status === 'todo' || card.status === 'done' || (busy && card.waiting?.kind !== 'setup'))
       throw new HttpError(409, 'Thẻ này không ở trạng thái chạy lại được.');
     const before = { status: card.status, runState: card.runState, waiting: card.waiting };
+    const project = await ownProject(c, card.projectId);
     pushCard(userId, await store.updateCard(card.id, { status: 'in_progress', runState: 'starting', waiting: null, error: null, summary: null }));
     try {
       await hub.request(deviceId, 'card.retry', {
@@ -524,6 +552,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
         mode: card.mode,
         attachments: card.attachments.map(({ id, name, mime }) => ({ id, name, mime })),
         parent: await parentRef(card),
+        git: project.git,
       });
     } catch (err) {
       pushCard(userId, await store.updateCard(card.id, { ...before, error: (err as Error).message }));
@@ -610,12 +639,13 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     if (card.status === 'done') throw new HttpError(409, 'Thẻ này đã được hoàn tất rồi.');
     const b = await body<{ action?: FinishAction; commitMessage?: string }>(c);
     const action = b.action ?? 'commit';
-    if (!['commit', 'pr', 'merge', 'discard'].includes(action)) throw new HttpError(400, 'Hành động không hợp lệ.');
+    if (!['merge_pr', 'commit', 'pr', 'merge', 'discard'].includes(action)) throw new HttpError(400, 'Hành động không hợp lệ.');
+    const project = await ownProject(c, card.projectId);
     const res = await hub.request(
       deviceId,
       'card.finish',
-      { cardId: card.id, action, commitMessage: b.commitMessage?.trim() || card.title },
-      180_000,
+      { cardId: card.id, action, commitMessage: b.commitMessage?.trim() || card.title, git: project.git },
+      300_000,
     );
     const updated = await store.updateCard(card.id, {
       status: 'done',
@@ -625,8 +655,21 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       summary: res.message,
       error: null,
       preview: null,
+      pr: null,
     });
     return c.json(pushCard(userId, updated));
+  });
+
+  // -- GitHub pull requests of a task --------------------------------------------
+
+  api.post('/cards/:id/pr/refresh', async (c) => {
+    const { card, deviceId } = await ownCard(c, c.req.param('id'));
+    return c.json(await hub.request(deviceId, 'card.pr.refresh', { cardId: card.id }, 60_000));
+  });
+
+  api.post('/cards/:id/pr/sync', async (c) => {
+    const { card, deviceId } = await ownCard(c, c.req.param('id'));
+    return c.json(await hub.request(deviceId, 'card.pr.sync', { cardId: card.id }, 180_000));
   });
 
   return api;
@@ -644,4 +687,19 @@ function composeFollowup(text: string, comments: ReviewComment[]): string {
   }
   if (text.trim()) parts.push(text.trim());
   return parts.join('\n');
+}
+
+const REF = /^(?!-)(?!\/)(?!.*\.\.)(?!.*\/\/)[A-Za-z0-9._\/-]+$/;
+
+/** Validate git settings from the browser; branch names must be safe to pass to git. */
+function parseGitSettings(b: Partial<GitSettings>): GitSettings {
+  const flow = b.flow === 'pr' ? 'pr' : 'local';
+  const baseBranch = typeof b.baseBranch === 'string' && b.baseBranch.trim() ? b.baseBranch.trim() : null;
+  if (baseBranch && (baseBranch.length > 100 || !REF.test(baseBranch) || baseBranch.endsWith('/') || baseBranch.endsWith('.lock'))) {
+    throw new HttpError(400, 'Tên nhánh gốc không hợp lệ.');
+  }
+  const branchPrefix = typeof b.branchPrefix === 'string' ? b.branchPrefix.trim() : DEFAULT_GIT_SETTINGS.branchPrefix;
+  if (branchPrefix && (branchPrefix.length > 40 || !REF.test(branchPrefix))) throw new HttpError(400, 'Tiền tố nhánh không hợp lệ.');
+  const mergeMethod = b.mergeMethod === 'merge' || b.mergeMethod === 'rebase' ? b.mergeMethod : 'squash';
+  return { flow, baseBranch, branchPrefix, mergeMethod, autoDraftPr: b.autoDraftPr !== false };
 }

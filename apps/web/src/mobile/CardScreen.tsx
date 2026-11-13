@@ -12,6 +12,7 @@ import {
 import { api } from '../api.ts';
 import { FinishBox, LogTab, WaitingBox, type Run } from '../components/CardPanel.tsx';
 import { DiffView } from '../components/DiffView.tsx';
+import { ciSummary, PrPanel } from '../components/PrPanel.tsx';
 import type { ToastApi } from '../components/Toasts.tsx';
 import { appendPhrase, VoiceButton } from '../components/VoiceButton.tsx';
 import { badge, bucket, timeAgo } from './status.ts';
@@ -109,7 +110,7 @@ export function CardScreen({
           <WaitingBox card={card} cards={cards} project={project} toasts={toasts} busy={busy} run={run} />
         )}
 
-        {reviewable && <Review card={card} toasts={toasts} busy={busy} run={run} startPreview={startPreview} />}
+        {reviewable && <Review card={card} project={project} toasts={toasts} busy={busy} run={run} startPreview={startPreview} />}
 
         {(card.status === 'in_progress' || card.status === 'needs_input' || kind === 'failed' || kind === 'running') && (
           <section className="m-section">
@@ -176,7 +177,21 @@ export function CardScreen({
 
 /** Review: preview with a phone link and screenshot, the agent's report, changed files, and
  *  the decision (request changes, merge, or reject). */
-function Review({ card, toasts, busy, run, startPreview }: { card: Card; toasts: ToastApi; busy: boolean; run: Run; startPreview: boolean }) {
+function Review({
+  card,
+  project,
+  toasts,
+  busy,
+  run,
+  startPreview,
+}: {
+  card: Card;
+  project: Project;
+  toasts: ToastApi;
+  busy: boolean;
+  run: Run;
+  startPreview: boolean;
+}) {
   const [diff, setDiff] = useState<DiffResult | null>(null);
   const [diffError, setDiffError] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
@@ -191,6 +206,21 @@ function Review({ card, toasts, busy, run, startPreview }: { card: Card; toasts:
   useEffect(load, [load, card.updatedAt]);
 
   const isAsk = card.mode === 'ask';
+  const prFlow = !isAsk && (project.git.flow === 'pr' || !!card.pr);
+  const base = card.pr?.base || project.git.baseBranch || project.baseRef || 'main';
+  const mergePr = () => {
+    const pr = card.pr;
+    const ci = pr ? ciSummary(pr) : null;
+    const warn =
+      pr && pr.checks.failed > 0
+        ? `\n\nCẢNH BÁO: CI đang lỗi (${pr.checks.failing.join(', ')}).`
+        : pr && pr.checks.pending > 0
+          ? '\n\nCI vẫn đang chạy.'
+          : '';
+    const what = pr ? `PR #${pr.number}` : 'nhánh này (Localkan sẽ mở PR trước)';
+    if (!confirm(`Merge ${what} vào ${base} trên GitHub? Pipeline của repo sẽ deploy.${ci ? ` (${ci.label})` : ''}${warn}`)) return;
+    run(() => api.finish(card.id, 'merge_pr', card.title), 'Đã merge PR trên GitHub.');
+  };
   const answer = diff ? addedText(diff.patch, '.localkan/answer.md') : null;
   const files = diff?.files.filter((f) => !(isAsk && f.path === '.localkan/answer.md')) ?? [];
   const adds = files.reduce((n, f) => n + f.additions, 0);
@@ -198,6 +228,7 @@ function Review({ card, toasts, busy, run, startPreview }: { card: Card; toasts:
 
   return (
     <>
+      {prFlow && <PrPanel card={card} project={project} toasts={toasts} />}
       {!isAsk && <PreviewBlock card={card} toasts={toasts} autoStart={startPreview} />}
 
       {card.summary && (
@@ -261,7 +292,7 @@ function Review({ card, toasts, busy, run, startPreview }: { card: Card; toasts:
         )}
       </section>
 
-      {more && <FinishBox card={card} busy={busy} run={run} onCancel={() => setMore(false)} />}
+      {more && <FinishBox card={card} busy={busy} run={run} onCancel={() => setMore(false)} flow={prFlow ? 'pr' : 'local'} />}
 
       <div className="m-bottom m-decide">
         <div className="m-row">
@@ -271,6 +302,10 @@ function Review({ card, toasts, busy, run, startPreview }: { card: Card; toasts:
           {isAsk ? (
             <button className="m-btn big primary" disabled={busy} onClick={() => run(() => api.finish(card.id, 'discard', ''), 'Đã đóng việc.')}>
               ✓ Xong
+            </button>
+          ) : prFlow ? (
+            <button className="m-btn big primary" disabled={busy} onClick={mergePr}>
+              ⑂ Merge PR
             </button>
           ) : (
             <button
@@ -291,7 +326,7 @@ function Review({ card, toasts, busy, run, startPreview }: { card: Card; toasts:
             </button>
           )}
           <button className="m-link" onClick={() => setMore((v) => !v)}>
-            {more ? 'Ẩn cách khác' : 'Cách khác (commit, PR)…'}
+            {more ? 'Ẩn cách khác' : prFlow ? 'Cách khác…' : 'Cách khác (commit, PR)…'}
           </button>
         </div>
       </div>

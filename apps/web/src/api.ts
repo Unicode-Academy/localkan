@@ -1,4 +1,7 @@
 import type {
+  GitSettings,
+  PrInfo,
+  RepoInfo,
   NotifyPrefs,
   PushSubscriptionJSON,
   BrowserAction,
@@ -67,6 +70,10 @@ export const api = {
   previewStop: (id: string) => call('DELETE', `/cards/${id}/preview`),
   screenshots: (id: string, path: string) => call<{ shots: Screenshot[] }>('POST', `/cards/${id}/screenshots`, { path }),
   card: (id: string) => call<Card>('GET', `/cards/${id}`),
+  projectRepo: (id: string) => call<RepoInfo>('GET', `/projects/${id}/repo`),
+  saveGit: (id: string, git: GitSettings) => call<Project>('PUT', `/projects/${id}/git`, git),
+  prRefresh: (cardId: string) => call<{ pr: PrInfo | null }>('POST', `/cards/${cardId}/pr/refresh`),
+  prSync: (cardId: string) => call<{ ok: boolean; conflict: boolean; message: string }>('POST', `/cards/${cardId}/pr/sync`),
   pushConfig: () => call<{ publicKey: string; devices: number }>('GET', '/push/config'),
   pushSubscribe: (subscription: PushSubscriptionJSON, prefs: Partial<NotifyPrefs> | undefined, label: string) =>
     call<{ prefs: NotifyPrefs }>('POST', '/push/subscription', { subscription, prefs, label }),

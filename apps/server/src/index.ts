@@ -18,7 +18,7 @@ import { Hono } from 'hono';
 import { WebSocketServer } from 'ws';
 import { createApi, deviceForToken, SESSION_COOKIE, sessionUserId } from './api.ts';
 import { Hub } from './hub.ts';
-import { cardPayload, Push } from './push.ts';
+import { cardPayload, eventKind, Push } from './push.ts';
 import { Store } from './store.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -38,10 +38,10 @@ console.log(`MongoDB connected (database: ${store.db.databaseName})`);
 const push = await Push.init(store.db);
 const hub = new Hub(store, {
   // Push "done / needs you / failed" to the user's devices.
-  onCardEvent: (userId, kind, card) => {
+  onCardEvent: (userId, event, card) => {
     store
       .getProject(card.projectId)
-      .then((p) => push.notify(userId, kind, cardPayload(kind, card, p?.name ?? 'Localkan')))
+      .then((p) => push.notify(userId, eventKind(event), cardPayload(event, card, p?.name ?? 'Localkan')))
       .catch((err: Error) => console.error('notify:', err.message));
   },
 });
