@@ -79,6 +79,7 @@ export class Hub {
     const conn: BridgeConn = { deviceId, userId, socket, pending: new Map() };
     this.bridges.set(deviceId, conn);
     void this.touchDevice(deviceId);
+    void this.adoptOrphans(userId, deviceId);
 
     socket.on('message', (raw) => {
       let msg: BridgeToServer;
@@ -98,6 +99,20 @@ export class Hub {
       }
       void this.touchDevice(deviceId);
     });
+  }
+
+  /** Boards left on a removed device follow the computer that connects next. */
+  private async adoptOrphans(userId: string, deviceId: string) {
+    try {
+      const moved = await this.store.adoptOrphanProjects(userId, deviceId);
+      for (const id of moved) {
+        const project = await this.store.getProject(id);
+        if (project) this.sendToUser(userId, { type: 'project.updated', project });
+      }
+      if (moved.length) console.log(`moved ${moved.length} board(s) from a removed device to ${deviceId}`);
+    } catch (err) {
+      console.error('adopt boards:', (err as Error).message);
+    }
   }
 
   request<M extends BridgeMethod>(

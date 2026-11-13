@@ -272,6 +272,22 @@ export class Store {
     return (await this.devices.countDocuments({ _id: id, userId }, { limit: 1 })) > 0;
   }
 
+  /**
+   * Boards bound to a device that no longer exists (removed, then the same computer paired
+   * again under a new id) move to `deviceId`. Returns the ids of the boards that moved.
+   */
+  async adoptOrphanProjects(userId: string, deviceId: string): Promise<string[]> {
+    const devices = (await this.devices.find({ userId }, { projection: { _id: 1 } }).toArray()).map((d) => d._id);
+    if (!devices.includes(deviceId)) return [];
+    const orphans = await this.projects.find({ userId, deviceId: { $nin: devices } }, { projection: { _id: 1 } }).toArray();
+    if (!orphans.length) return [];
+    const ids = orphans.map((p) => p._id);
+    await this.projects.updateMany({ _id: { $in: ids }, userId, deviceId: { $nin: devices } }, { $set: { deviceId } });
+    // The card ownership cache remembers the old device: forget the moved boards' cards.
+    for (const [cardId, owner] of this.owners) if (ids.includes(owner.projectId)) this.owners.delete(cardId);
+    return ids;
+  }
+
   async deleteDevice(userId: string, id: string) {
     return (await this.devices.deleteOne({ _id: id, userId })).deletedCount > 0;
   }

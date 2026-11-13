@@ -20,7 +20,12 @@ export function DevicesDialog({
 
   const newCode = () => api.pairingCode().then(setCode, (e) => toasts.error(e.message));
   const remove = (d: Device) => {
-    if (!confirm(`Gỡ máy "${d.name}"? Bridge trên máy đó sẽ bị ngắt và phải ghép nối lại.`)) return;
+    if (
+      !confirm(
+        `Gỡ máy "${d.name}"? Bridge trên máy đó sẽ bị ngắt và phải ghép nối lại. Các bảng của máy này sẽ tự chuyển sang máy kết nối tiếp theo.`,
+      )
+    )
+      return;
     api.removeDevice(d.id).then(onChanged, (e) => toasts.error(e.message));
   };
 
