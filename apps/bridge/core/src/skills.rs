@@ -1,6 +1,6 @@
 //! Board skills: `.localkan/skills/<name>/SKILL.md` in the project folder (never committed),
-//! linked into every task folder so both agents find them: Claude Code reads `.claude/skills/`,
-//! agy reads `.agents/skills/`. A repo's own skills in one of those folders are linked into the
+//! linked into every task folder so every agent finds them: Claude Code reads `.claude/skills/`,
+//! agy and Codex read `.agents/skills/`, Grok reads both. A repo's own skills in one of those folders are linked into the
 //! other too, so each agent sees all of them. The links are kept out of git.
 
 use crate::git;

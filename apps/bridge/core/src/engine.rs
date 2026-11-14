@@ -210,6 +210,8 @@ impl Engine {
         let mut agents = std::collections::BTreeMap::new();
         agents.insert("claude".to_string(), which("claude").is_some());
         agents.insert("antigravity".to_string(), which("agy").is_some());
+        agents.insert("codex".to_string(), which("codex").is_some());
+        agents.insert("grok".to_string(), which("grok").is_some());
         BridgeInfo { device_name: self.device_name.clone(), version: crate::VERSION.into(), orca, agents }
     }
 
@@ -743,7 +745,7 @@ impl Engine {
         if let (Some(cmd), None) = (&self.mock_cmd, &retry) {
             return self.dispatch_mock(&card, cmd, spec, &coord, terminal).await;
         }
-        if card.agent == "claude" && terminal.is_none() && retry.is_none() {
+        if PRELAUNCH_AGENTS.contains(&card.agent.as_str()) && terminal.is_none() && retry.is_none() {
             // Claude can open startup dialogs (folder trust, bypass-permissions warning) whose
             // default answer is "No, exit". Orca would type the task into them and Claude
             // would quit, so launch Claude first, let the human answer any dialog, and
@@ -2519,6 +2521,11 @@ enum Startup {
     Unknown,
 }
 
+/// Agents launched ahead of the dispatch and given the task only once their input box is ready:
+/// Claude can open startup dialogs whose default is "No, exit"; Grok drops text typed while it
+/// is still starting up.
+const PRELAUNCH_AGENTS: [&str; 2] = ["claude", "grok"];
+
 fn classify_startup(lines: &[String]) -> Startup {
     let content: Vec<&str> = lines.iter().map(|l| l.trim_end()).filter(|l| !l.is_empty()).collect();
     let Some(last) = content.last() else { return Startup::Unknown };
@@ -2532,7 +2539,21 @@ fn classify_startup(lines: &[String]) -> Startup {
     if tail.contains("enter to confirm") || tail.contains("esc to cancel") || tail.contains("↑/↓ navigate") {
         return Startup::Dialog;
     }
-    let ready_marks = ["for shortcuts", "⏵⏵", "permissions on", "auto mode on", "accept edits on", "plan mode on", "shift+tab to cycle"];
+    let ready_marks = [
+        // Claude Code
+        "for shortcuts",
+        "⏵⏵",
+        "permissions on",
+        "auto mode on",
+        "accept edits on",
+        "plan mode on",
+        "shift+tab to cycle",
+        // Grok: its status bar ("Weekly limit left: … · Grok 4.7 (high) · always-approve")
+        "always-approve",
+        "weekly limit left",
+        "· grok ",
+        "enter:send",
+    ];
     if ready_marks.iter().any(|m| tail.contains(m)) {
         return Startup::Ready;
     }
@@ -2759,6 +2780,24 @@ mod tests {
         let spec = compose_spec("T", "p", "act", &[".localkan/attachments/01-a.png".to_string()], "## Project memory\nUse pnpm.");
         assert!(spec.contains("Use pnpm."));
         assert!(spec.contains("- .localkan/attachments/01-a.png"));
+    }
+
+    #[test]
+    fn grok_ready_screen() {
+        let screen: Vec<String> = [
+            "  Help improve Grok                                       [Opt out] [Opt in]",
+            "  Read Terms and Privacy Policy.",
+            "  ╭──────────────────────────────────────────────────────────────╮",
+            "  │ ❯                                                             │",
+            "  ╰──── Weekly limit left: 1% · Grok 4.7 (high) · always-approve ─╯",
+            "                                                          [stable]",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert!(matches!(classify_startup(&screen), Startup::Ready));
+        let booting: Vec<String> = ["  Grok Build  1.0.77", "  Resume session   ctrl+r"].iter().map(|s| s.to_string()).collect();
+        assert!(matches!(classify_startup(&booting), Startup::Unknown));
     }
 
     #[test]

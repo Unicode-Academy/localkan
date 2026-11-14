@@ -27,6 +27,8 @@ pub fn search_path() -> &'static str {
             home.join(".cargo/bin"),
             home.join("Library/pnpm/bin"),
             home.join(".bun/bin"),
+            home.join(".grok/bin"),
+            home.join(".codex/bin"),
             home.join(".npm-global/bin"),
             PathBuf::from("/opt/homebrew/bin"),
             PathBuf::from("/opt/homebrew/sbin"),

@@ -446,6 +446,14 @@ label {
   color: var(--accent);
   border-color: currentColor;
 }
+.agent-codex {
+  color: var(--ok);
+  border-color: currentColor;
+}
+.agent-grok {
+  color: var(--text);
+  border-color: currentColor;
+}
 .run-running,
 .run-starting {
   color: var(--col-in_progress);
@@ -1646,8 +1654,7 @@ label {
 }
 .m-segment {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   padding: 4px;
   gap: 4px;
   border-radius: 14px;

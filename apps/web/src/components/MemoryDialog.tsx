@@ -96,8 +96,8 @@ export function MemoryDialog({ project, onClose, toasts }: { project: Project; o
       {tab === 'skills' && (
         <div className="handoffs">
           <p className="muted small">
-            Skill riêng của bảng, không cần commit vào repo. Mỗi khi giao việc, Localkan nạp chúng vào thư mục việc cho cả Claude
-            Code (<code>.claude/skills/</code>) và agy (<code>.agents/skills/</code>); git bỏ qua chúng.
+            Skill riêng của bảng, không cần commit vào repo. Mỗi khi giao việc, Localkan nạp chúng vào thư mục việc ở cả{' '}
+            <code>.claude/skills/</code> (Claude Code, Grok) lẫn <code>.agents/skills/</code> (agy, Codex, Grok); git bỏ qua chúng.
             {project.repos.length > 0 && ' Skill sẵn có trong từng repo con cũng được đưa lên thư mục việc để agent thấy ngay từ đầu.'}
           </p>
           <p className="small">

@@ -5,7 +5,7 @@ Bảng Kanban điều phối nhiều AI coding agent. Mỗi thẻ việc chạy 
 Kiến trúc 3 lớp theo [đề án gốc](docs/DE-AN-v1.md):
 
 ```
-Web UI (React)  ⇄  Server (Node: API + WebSocket hub, MongoDB metadata)  ⇄  Bridge (Rust/Tauri trên máy bạn)  ⇄  Orca runtime  ⇄  claude / agy
+Web UI (React)  ⇄  Server (Node: API + WebSocket hub, MongoDB metadata)  ⇄  Bridge (Rust/Tauri trên máy bạn)  ⇄  Orca runtime  ⇄  claude / agy / codex / grok
 ```
 
 | Thư mục | Vai trò |
@@ -21,7 +21,7 @@ Web UI (React)  ⇄  Server (Node: API + WebSocket hub, MongoDB metadata)  ⇄  
 
 | Cột | Bạn làm | Bên dưới |
 | :-- | :-- | :-- |
-| **To Do** | Tạo thẻ, chọn agent (Claude Code / agy) và chế độ (Làm / Hỏi). | Chỉ lưu metadata trên server. |
+| **To Do** | Tạo thẻ, chọn agent (Claude Code / agy / Codex / Grok) và chế độ (Làm / Hỏi). | Chỉ lưu metadata trên server. |
 | **In Progress** | Kéo thẻ sang, hoặc bấm "Giao cho agent". | Bridge: `orca worktree create` → `orca orchestration worker-start --agent …`. Log được đọc từ màn hình terminal của agent, lọc nhiễu, che secret rồi đẩy lên web. |
 | **Cần bạn xử lý** | Trả lời câu hỏi, hoặc bấm Đồng ý / Từ chối / phím. | Có hai loại: agent hỏi qua `orca orchestration ask` (bạn trả lời bằng chữ), hoặc terminal đang chờ xác nhận (ví dụ "trust this folder?"). Với loại thứ hai, bridge gửi phím rồi tự giao lại việc. |
 | **Review** | Xem diff, bấm vào dòng để nhận xét, "Yêu cầu sửa". | Agent gửi `worker_done` → thẻ tự sang Review. "Yêu cầu sửa" giao tiếp việc cho chính terminal agent cũ trong cùng worktree. |
@@ -47,17 +47,30 @@ Khi chọn "Làm tiếp từ thẻ…" mà nhánh của thẻ đó chưa merge, 
 
 | Loại | Đặt ở đâu | Ghi chú |
 | :-- | :-- | :-- |
-| **Toàn cục** | Claude Code: `~/.claude/skills/<tên>/SKILL.md` · agy: `~/.gemini/antigravity-cli/skills/<tên>/SKILL.md` | Áp dụng cho mọi việc, vì agent chạy trên máy bạn. |
-| **Trong repo** | Claude Code: `.claude/skills/` · agy: `.agents/skills/` | Phải commit, và push nếu bảng dùng PR hoặc Merge rồi push, vì worktree được tạo từ nhánh gốc trên origin. |
+| **Toàn cục** | Claude Code: `~/.claude/skills/<tên>/SKILL.md` · agy: `~/.gemini/antigravity-cli/skills/<tên>/SKILL.md` · Codex: `~/.codex/skills/` · Grok: `~/.grok/skills/` (Grok đọc cả `~/.claude/skills/`) | Áp dụng cho mọi việc, vì agent chạy trên máy bạn. |
+| **Trong repo** | Claude Code: `.claude/skills/` · agy, Codex: `.agents/skills/` · Grok: cả hai | Phải commit, và push nếu bảng dùng PR hoặc Merge rồi push, vì worktree được tạo từ nhánh gốc trên origin. |
 | **Của bảng** | `<thư mục dự án>/.localkan/skills/<tên>/SKILL.md` | Không cần commit; git bỏ qua. Bảng nhiều repo đặt ở thư mục cha. |
 
-Mỗi khi giao việc (và khi chạy lại hoặc gửi yêu cầu sửa), Localkan liên kết **skill của bảng** vào thư mục việc ở cả `.claude/skills/` lẫn `.agents/skills/`, để Claude Code và agy cùng dùng được.
+Mỗi khi giao việc (và khi chạy lại hoặc gửi yêu cầu sửa), Localkan liên kết **skill của bảng** vào thư mục việc ở cả `.claude/skills/` lẫn `.agents/skills/`, để cả bốn agent cùng dùng được: Claude Code đọc `.claude/skills/`, agy và Codex đọc `.agents/skills/`, Grok đọc cả hai.
 - Skill sẵn có của repo trong một trong hai thư mục cũng được liên kết sang thư mục kia.
 - Với bảng nhiều repo, skill của từng repo con được đưa lên thư mục việc, nên agent thấy ngay từ đầu. Trùng tên thì thêm tiền tố tên repo, ví dụ `backend-review`.
 - Các liên kết được git bỏ qua, nên không lọt vào diff, commit hay PR.
 - Danh sách skill của bảng xem ở **🧠 Bộ nhớ → Skill**.
 
 Mỗi `SKILL.md` cần phần đầu có `name` và `description`; agent dựa vào `description` để biết khi nào dùng skill.
+
+## Agent
+
+| Agent | Lệnh | Bridge chạy thế nào |
+| :-- | :-- | :-- |
+| **Claude Code** | `claude` | Mở sẵn agent trong terminal, đợi sẵn sàng rồi mới gửi việc. |
+| **Antigravity (agy)** | `agy` | Orca mở agent và gửi việc luôn. |
+| **Codex** | `codex` | Orca mở agent và gửi việc luôn. |
+| **Grok** | `grok` | Như Claude Code: mở sẵn rồi mới gửi, vì Grok bỏ mất chữ gõ vào khi đang khởi động. |
+
+- Agent chạy với cờ mặc định của Orca để không hỏi quyền từng lệnh: Codex `--dangerously-bypass-approvals-and-sandbox`, Grok `--permission-mode bypassPermissions`.
+- Bridge tìm lệnh trong PATH, `~/.local/bin`, `~/.codex/bin`, `~/.grok/bin` và Homebrew. Agent nào tìm thấy được đánh ✓ trong hộp thoại máy chạy bridge (nút máy trên thanh trên cùng).
+- Hạn mức của agent tính theo tài khoản của bạn. Grok hiện phần còn lại ở thanh trạng thái ("Weekly limit left"); hết hạn mức thì agent không làm tiếp được, xem tab Terminal của thẻ rồi dừng việc.
 
 ## Git: Pull Request, Merge rồi push, hoặc merge cục bộ
 
@@ -211,7 +224,7 @@ Lưu ý:
 - Node 24 trở lên (server chạy thẳng TypeScript bằng type stripping của Node) và pnpm.
 - Rust (để build bridge): `brew install rustup && rustup-init -y`.
 - Orca.app (đã thử với 1.4.201). Bridge tự tìm CLI ở `/Applications/Orca.app/Contents/Resources/bin/orca`, hoặc lấy từ biến `ORCA_BIN`.
-- Agent CLI đã đăng nhập: `claude` (chạy `claude` một lần để đăng nhập) và/hoặc `agy`.
+- Ít nhất một agent CLI đã đăng nhập: `claude`, `agy`, `codex` hoặc `grok` (chạy lệnh đó một lần trong terminal để đăng nhập).
 - `gh` đã đăng nhập, nếu muốn dùng "Tạo PR".
 - Git đã có `user.name` và `user.email`.
 

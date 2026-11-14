@@ -4,12 +4,15 @@
 // Keep the two in sync: any change to BridgeMethods, BridgeEvents or the shapes they use
 // must be made on both sides.
 
-export const AGENTS = ['claude', 'antigravity'] as const;
+/** Agent ids are Orca's: Orca launches each CLI (claude, agy, codex, grok) with its own flags. */
+export const AGENTS = ['claude', 'antigravity', 'codex', 'grok'] as const;
 export type AgentId = (typeof AGENTS)[number];
 
 export const AGENT_LABELS: Record<AgentId, string> = {
   claude: 'Claude Code',
   antigravity: 'Antigravity (agy)',
+  codex: 'Codex',
+  grok: 'Grok',
 };
 
 /** Kanban columns. `needs_input` is the Human-in-the-loop column. */
