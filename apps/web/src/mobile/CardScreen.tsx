@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Camera, Check, ChevronLeft, CircleStop, Ellipsis, ExternalLink, GitMerge, ImageIcon, Mic, Play, RefreshCw, RotateCcw, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import {
@@ -299,7 +299,9 @@ function Review({
       </section>
 
       {more && (
-        <FinishBox card={card} busy={busy} run={run} onCancel={() => setMore(false)} flow={multi ? 'multi' : prFlow ? 'pr' : project.git.flow} />
+        <Sheet title="Cách hoàn tất khác" onClose={() => setMore(false)}>
+          <FinishBox card={card} busy={busy} run={run} onCancel={() => setMore(false)} flow={multi ? 'multi' : prFlow ? 'pr' : project.git.flow} bare />
+        </Sheet>
       )}
 
       <div className="m-bottom m-decide">
@@ -355,8 +357,8 @@ function Review({
               Hủy và xóa nhánh
             </button>
           )}
-          <button className="m-link" onClick={() => setMore((v) => !v)}>
-            {more ? 'Ẩn cách khác' : prFlow || multi ? 'Cách khác…' : 'Cách khác (commit, PR)…'}
+          <button className="m-link" onClick={() => setMore(true)}>
+            {prFlow || multi ? 'Cách khác…' : 'Cách khác (commit, PR)…'}
           </button>
         </div>
       </div>
@@ -567,6 +569,24 @@ function RequestChanges({
         <button className="m-cta" disabled={busy || (!text.trim() && !comments.length)} onClick={() => onSend(text.trim())}>
           Gửi cho agent
         </button>
+      </div>
+    </div>
+  );
+}
+
+/** A bottom sheet over the screen: the page behind it stays put. */
+function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  useScrollLock();
+  return (
+    <div className="m-sheet-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="m-sheet" role="dialog" aria-modal="true" aria-label={title}>
+        <div className="m-sheet-head">
+          <strong>{title}</strong>
+          <button className="m-icon-btn" onClick={onClose} aria-label="Đóng">
+            <X />
+          </button>
+        </div>
+        {children}
       </div>
     </div>
   );

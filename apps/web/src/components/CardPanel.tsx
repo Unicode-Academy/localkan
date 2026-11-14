@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { ArrowDown, ArrowUp, Check, CircleStop, CornerDownRight, ExternalLink, Play, RefreshCw, RotateCcw, X } from 'lucide-react';
 import {
   AGENT_LABELS,
@@ -19,6 +19,7 @@ import { api } from '../api.ts';
 import { useAgentModels, useNarrow, useScrollLock, type AgentModels } from '../hooks.ts';
 import { agentText, readLastModel } from '../models.ts';
 import { ModelSelect } from './ModelSelect.tsx';
+import { Dialog } from './Dialog.tsx';
 import { DiffView } from './DiffView.tsx';
 import { ImageAttachments, imagesFromClipboard, acceptImages } from './ImageAttachments.tsx';
 import { ParentSelect } from './ParentSelect.tsx';
@@ -56,6 +57,9 @@ export function CardPanel({
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [busy, setBusy] = useState(false);
   const started = card.status !== 'todo';
+  // Review state lives here, not in the Diff tab: the decision bar under every tab sends the
+  // comments made on the diff.
+  const [comments, setComments] = useState<ReviewComment[]>([]);
 
   // Load the bridge's stored log once when the panel opens.
   useEffect(() => {
@@ -93,111 +97,118 @@ export function CardPanel({
 
   return (
     <aside className="panel" aria-label={`Thẻ ${card.title}`}>
-      <div className="panel-head">
-        <div>
-          <div className="panel-status">
-            {CARD_STATUS_LABELS[card.status]} <RunBadge state={card.runState} />
+      {/* Everything but the review bar. On a phone it is one scroll (the header scrolls away). */}
+      <div className="panel-main">
+        <div className="panel-head">
+          <div>
+            <div className="panel-status">
+              {CARD_STATUS_LABELS[card.status]} <RunBadge state={card.runState} />
+            </div>
+            <h2>{card.title}</h2>
+            <div className="panel-meta">
+              <span className={`agent agent-${card.agent}`} title={agentText(card, models)}>
+                {agentText(card, models)}
+              </span>
+              {card.mode === 'ask' && <span className="tag">Hỏi</span>}
+              {card.branch && <code>{card.branch}</code>}
+              {card.prUrl && (
+                <a href={card.prUrl} target="_blank" rel="noreferrer">
+                  Pull Request <ExternalLink />
+                </a>
+              )}
+            </div>
           </div>
-          <h2>{card.title}</h2>
-          <div className="panel-meta">
-            <span className={`agent agent-${card.agent}`} title={agentText(card, models)}>
-              {agentText(card, models)}
-            </span>
-            {card.mode === 'ask' && <span className="tag">Hỏi</span>}
-            {card.branch && <code>{card.branch}</code>}
-            {card.prUrl && (
-              <a href={card.prUrl} target="_blank" rel="noreferrer">
-                Pull Request <ExternalLink />
-              </a>
-            )}
+          <button className="btn ghost icon" onClick={onClose} aria-label="Đóng">
+            <X />
+          </button>
+        </div>
+
+        {card.error && <div className="banner error">{card.error}</div>}
+        {card.summary && card.status !== 'todo' && (
+          <div className="summary">
+            <strong>Agent báo cáo:</strong> {card.summary}
           </div>
-        </div>
-        <button className="btn ghost icon" onClick={onClose} aria-label="Đóng">
-          <X />
-        </button>
-      </div>
+        )}
 
-      {card.error && <div className="banner error">{card.error}</div>}
-      {card.summary && card.status !== 'todo' && (
-        <div className="summary">
-          <strong>Agent báo cáo:</strong> {card.summary}
-        </div>
-      )}
+        {card.waiting && <WaitingBox card={card} cards={cards} project={project} toasts={toasts} busy={busy} run={run} />}
 
-      {card.waiting && <WaitingBox card={card} cards={cards} project={project} toasts={toasts} busy={busy} run={run} />}
-
-      <div className="actions">
-        {card.status === 'todo' && (
-          <>
-            <button className="btn primary" disabled={busy || project.status !== 'ready'} onClick={() => run(() => api.start(card.id))}>
-              <Play /> Giao cho agent
+        <div className="actions">
+          {card.status === 'todo' && (
+            <>
+              <button className="btn primary" disabled={busy || project.status !== 'ready'} onClick={() => run(() => api.start(card.id))}>
+                <Play /> Giao cho agent
+              </button>
+              <button
+                className="btn ghost danger"
+                disabled={busy}
+                onClick={() => confirm('Xóa thẻ này?') && run(() => api.deleteCard(card.id).then(onClose))}
+              >
+                Xóa
+              </button>
+            </>
+          )}
+          {card.status === 'review' && (card.runState === 'failed' || card.runState === 'stopped') && (
+            <button
+              className="btn primary"
+              disabled={busy}
+              title="Giao lại nhiệm vụ ban đầu cho agent mới trong cùng worktree (giữ các thay đổi đã có)"
+              onClick={() => run(() => api.retry(card.id))}
+            >
+              <RotateCcw /> Chạy lại từ đầu
             </button>
+          )}
+          {(card.status === 'in_progress' || card.status === 'needs_input') && (
+            <button className="btn" disabled={busy} onClick={() => confirm('Dừng agent của thẻ này?') && run(() => api.stop(card.id), 'Đã dừng agent.')}>
+              <CircleStop /> Dừng
+            </button>
+          )}
+          {(card.status === 'done' ||
+            (card.status === 'review' && card.runState !== 'running' && card.runState !== 'starting')) && (
             <button
               className="btn ghost danger"
               disabled={busy}
-              onClick={() => confirm('Xóa thẻ này?') && run(() => api.deleteCard(card.id).then(onClose))}
+              onClick={() =>
+                confirm(
+                  card.status === 'done'
+                    ? 'Xóa thẻ khỏi bảng?'
+                    : 'Xóa thẻ khỏi bảng? Thẻ chưa được Hoàn tất nên worktree và nhánh của nó vẫn còn trên máy. Muốn dọn luôn thì dùng Hoàn tất → Hủy thay đổi.',
+                ) && run(() => api.deleteCard(card.id).then(onClose))
+              }
             >
-              Xóa
+              Xóa thẻ
             </button>
-          </>
-        )}
-        {card.status === 'review' && (card.runState === 'failed' || card.runState === 'stopped') && (
-          <button
-            className="btn primary"
-            disabled={busy}
-            title="Giao lại nhiệm vụ ban đầu cho agent mới trong cùng worktree (giữ các thay đổi đã có)"
-            onClick={() => run(() => api.retry(card.id))}
-          >
-            <RotateCcw /> Chạy lại từ đầu
-          </button>
-        )}
-        {(card.status === 'in_progress' || card.status === 'needs_input') && (
-          <button className="btn" disabled={busy} onClick={() => confirm('Dừng agent của thẻ này?') && run(() => api.stop(card.id), 'Đã dừng agent.')}>
-            <CircleStop /> Dừng
-          </button>
-        )}
-        {(card.status === 'done' ||
-          (card.status === 'review' && card.runState !== 'running' && card.runState !== 'starting')) && (
-          <button
-            className="btn ghost danger"
-            disabled={busy}
-            onClick={() =>
-              confirm(
-                card.status === 'done'
-                  ? 'Xóa thẻ khỏi bảng?'
-                  : 'Xóa thẻ khỏi bảng? Thẻ chưa được Hoàn tất nên worktree và nhánh của nó vẫn còn trên máy. Muốn dọn luôn thì dùng Hoàn tất → Hủy thay đổi.',
-              ) && run(() => api.deleteCard(card.id).then(onClose))
-            }
-          >
-            Xóa thẻ
-          </button>
-        )}
+          )}
+        </div>
+
+        <nav className="tabs" role="tablist">
+          {(['task', 'log', 'diff', 'preview', 'terminal'] as Tab[]).map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={tab === t}
+              className={tab === t ? 'on' : ''}
+              onClick={() => setTab(t)}
+              disabled={t !== 'task' && (!started || (card.status === 'done' && (t === 'preview' || t === 'terminal')))}
+              title={card.status === 'done' && (t === 'preview' || t === 'terminal') ? 'Việc đã xong: worktree và terminal đã được dọn' : undefined}
+            >
+              {{ task: 'Nhiệm vụ', log: 'Log', diff: 'Diff', preview: 'Xem trước', terminal: 'Terminal' }[t]}
+              {t === 'preview' && card.preview?.status === 'running' && <span className="dot ok tab-dot" aria-label="đang chạy" />}
+            </button>
+          ))}
+        </nav>
+
+        <div className="panel-body">
+          {tab === 'task' && <TaskTab card={card} cards={cards} models={models} toasts={toasts} />}
+          {tab === 'log' && <LogTab log={log} />}
+          {tab === 'diff' && <ReviewTab card={card} project={project} toasts={toasts} comments={comments} setComments={setComments} />}
+          {tab === 'terminal' && <TerminalTab card={card} busy={busy} run={run} />}
+          {tab === 'preview' && <PreviewTab card={card} toasts={toasts} />}
+        </div>
       </div>
 
-      <nav className="tabs" role="tablist">
-        {(['task', 'log', 'diff', 'preview', 'terminal'] as Tab[]).map((t) => (
-          <button
-            key={t}
-            role="tab"
-            aria-selected={tab === t}
-            className={tab === t ? 'on' : ''}
-            onClick={() => setTab(t)}
-            disabled={t !== 'task' && (!started || (card.status === 'done' && (t === 'preview' || t === 'terminal')))}
-            title={card.status === 'done' && (t === 'preview' || t === 'terminal') ? 'Việc đã xong: worktree và terminal đã được dọn' : undefined}
-          >
-            {{ task: 'Nhiệm vụ', log: 'Log', diff: 'Diff', preview: 'Xem trước', terminal: 'Terminal' }[t]}
-            {t === 'preview' && card.preview?.status === 'running' && <span className="dot ok tab-dot" aria-label="đang chạy" />}
-          </button>
-        ))}
-      </nav>
-
-      <div className="panel-body">
-        {tab === 'task' && <TaskTab card={card} cards={cards} models={models} toasts={toasts} />}
-        {tab === 'log' && <LogTab log={log} />}
-        {tab === 'diff' && <ReviewTab card={card} project={project} busy={busy} run={run} toasts={toasts} />}
-        {tab === 'terminal' && <TerminalTab card={card} busy={busy} run={run} />}
-        {tab === 'preview' && <PreviewTab card={card} toasts={toasts} />}
-      </div>
+      {card.status === 'review' && (
+        <ReviewBar card={card} project={project} busy={busy} run={run} comments={comments} setComments={setComments} />
+      )}
     </aside>
   );
 }
@@ -491,12 +502,27 @@ export function LogTab({ log }: { log: LogLine[] }) {
   );
 }
 
-function ReviewTab({ card, project, busy, run, toasts }: { card: Card; project: Project; busy: boolean; run: Run; toasts: ToastApi }) {
+/** Which "finish" choices fit this card: per-repo, pull request, or the board's own flow. */
+function finishFlow(card: Card, project: Project): GitFlow | 'multi' {
+  if (card.repos.length > 0) return 'multi';
+  return project.git.flow === 'pr' || card.pr ? 'pr' : project.git.flow;
+}
+
+function ReviewTab({
+  card,
+  project,
+  toasts,
+  comments,
+  setComments,
+}: {
+  card: Card;
+  project: Project;
+  toasts: ToastApi;
+  comments: ReviewComment[];
+  setComments: Dispatch<SetStateAction<ReviewComment[]>>;
+}) {
   const [diff, setDiff] = useState<DiffResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [comments, setComments] = useState<ReviewComment[]>([]);
-  const [feedback, setFeedback] = useState('');
-  const [finishing, setFinishing] = useState(false);
 
   const load = useCallback(() => {
     setError(null);
@@ -504,7 +530,6 @@ function ReviewTab({ card, project, busy, run, toasts }: { card: Card; project: 
   }, [card.id]);
   useEffect(load, [load, card.updatedAt]);
 
-  const canReview = card.status === 'review';
   const multi = card.repos.length > 0;
   const prFlow = !multi && (project.git.flow === 'pr' || !!card.pr);
   return (
@@ -530,39 +555,69 @@ function ReviewTab({ card, project, busy, run, toasts }: { card: Card; project: 
           onRemoveComment={(i) => setComments((prev) => prev.filter((_, j) => j !== i))}
         />
       )}
-      {canReview && (
-        <div className="review-actions">
-          <textarea
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            rows={3}
-            placeholder="Nhận xét chung hoặc yêu cầu sửa thêm (tùy chọn)…"
-          />
-          <div className="row wrap">
-            <button
-              className="btn"
-              disabled={busy || (!feedback.trim() && !comments.length)}
-              onClick={() =>
-                run(
-                  () => api.followup(card.id, feedback, comments).then(() => {
-                    setComments([]);
-                    setFeedback('');
-                  }),
-                  'Đã gửi yêu cầu sửa cho agent.',
-                )
-              }
-            >
-              Yêu cầu sửa ({comments.length} nhận xét)
-            </button>
-            <div className="spacer" />
-            <button className="btn primary" disabled={busy} onClick={() => setFinishing(true)}>
-              Hoàn tất…
-            </button>
-          </div>
-        </div>
-      )}
-      {finishing && canReview && (
-        <FinishBox card={card} busy={busy} run={run} onCancel={() => setFinishing(false)} flow={multi ? 'multi' : prFlow ? 'pr' : project.git.flow} />
+    </div>
+  );
+}
+
+/** The review decision, pinned under the tabs so it never sits behind a long diff or log:
+ *  a note for the agent, "request changes", and "finish" (opens the finish choices). */
+function ReviewBar({
+  card,
+  project,
+  busy,
+  run,
+  comments,
+  setComments,
+}: {
+  card: Card;
+  project: Project;
+  busy: boolean;
+  run: Run;
+  comments: ReviewComment[];
+  setComments: Dispatch<SetStateAction<ReviewComment[]>>;
+}) {
+  const [feedback, setFeedback] = useState('');
+  const [writing, setWriting] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+  const note = comments.length ? ` (${comments.length} nhận xét)` : '';
+  return (
+    <div className="review-bar">
+      <textarea
+        value={feedback}
+        onChange={(e) => setFeedback(e.target.value)}
+        onFocus={() => setWriting(true)}
+        onBlur={() => setWriting(false)}
+        rows={writing || feedback ? 3 : 1}
+        placeholder={comments.length ? 'Nhận xét chung (tùy chọn)…' : 'Cần agent sửa gì thêm?'}
+        title="Có thể bấm vào một dòng trong tab Diff để nhận xét ngay dòng đó"
+        aria-label="Yêu cầu sửa"
+      />
+      <div className="row">
+        <button
+          className="btn"
+          disabled={busy || (!feedback.trim() && !comments.length)}
+          onClick={() =>
+            run(
+              () =>
+                api.followup(card.id, feedback, comments).then(() => {
+                  setComments([]);
+                  setFeedback('');
+                }),
+              'Đã gửi yêu cầu sửa cho agent.',
+            )
+          }
+        >
+          Yêu cầu sửa{note}
+        </button>
+        <div className="spacer" />
+        <button className="btn primary" disabled={busy} onClick={() => setFinishing(true)}>
+          <Check /> Hoàn tất…
+        </button>
+      </div>
+      {finishing && (
+        <Dialog title="Hoàn tất thẻ" onClose={() => setFinishing(false)}>
+          <FinishBox card={card} busy={busy} run={run} onCancel={() => setFinishing(false)} flow={finishFlow(card, project)} bare />
+        </Dialog>
       )}
     </div>
   );
@@ -584,12 +639,15 @@ export function FinishBox({
   run,
   onCancel,
   flow = 'local',
+  bare = false,
 }: {
   card: Card;
   busy: boolean;
   run: Run;
   onCancel: () => void;
   flow?: GitFlow | 'multi';
+  /** Inside a dialog or sheet that already has the title and frame. */
+  bare?: boolean;
 }) {
   const order: FinishAction[] =
     flow === 'multi'
@@ -602,8 +660,8 @@ export function FinishBox({
   const [action, setAction] = useState<FinishAction>(card.mode === 'ask' ? 'discard' : flow === 'local' ? 'commit' : order[0]);
   const [message, setMessage] = useState(card.title);
   return (
-    <div className="finish-box">
-      <div className="waiting-title">Hoàn tất thẻ</div>
+    <div className={bare ? 'finish-box bare' : 'finish-box'}>
+      {!bare && <div className="waiting-title">Hoàn tất thẻ</div>}
       {order.map((a) => (
         <label key={a} className="radio">
           <input type="radio" name="finish" checked={action === a} onChange={() => setAction(a)} />

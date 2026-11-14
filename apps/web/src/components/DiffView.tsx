@@ -94,6 +94,11 @@ export function DiffView({
         <div className="diff-file" key={file.path}>
           <div className="diff-file-head">{file.path}</div>
           <table className="diff-table">
+            <colgroup>
+              <col className="ln-col" />
+              <col className="ln-col" />
+              <col />
+            </colgroup>
             <tbody>
               {file.lines.map((l, idx) => {
                 const lineComments = comments
