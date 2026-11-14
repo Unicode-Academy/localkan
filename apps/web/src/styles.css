@@ -234,8 +234,10 @@ label {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  /* Saved to the home screen the page runs under the status bar: keep clear of it. */
-  padding: calc(10px + var(--safe-top)) calc(16px + var(--safe-right)) 10px calc(16px + var(--safe-left));
+  /* Saved to the home screen the page runs under the status bar: keep clear of it, with some
+     extra air below it (none on a desktop, where the inset is 0). */
+  padding: calc(10px + var(--safe-top) + min(var(--safe-top), 14px)) calc(16px + var(--safe-right)) 10px
+    calc(16px + var(--safe-left));
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
@@ -2069,7 +2071,8 @@ label {
 }
 .m-menu-board .m-btn {
   width: auto;
-  flex: 1 1 0;
+  flex: 1 1 auto;
+  white-space: nowrap;
 }
 
 /* Hints that only make sense with a mouse and keyboard. */
