@@ -452,6 +452,8 @@ label {
   box-shadow: var(--shadow);
   cursor: pointer;
   display: grid;
+  /* One column no wider than the tile, so long labels shrink instead of overflowing. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
 }
 .tile:hover {
@@ -491,6 +493,14 @@ label {
   border-radius: 99px;
   border: 1px solid var(--border);
   color: var(--muted);
+}
+/* "Agent · model" can be long: cut it with an ellipsis instead of overflowing the tile. */
+.agent {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
 }
 .agent-claude {
   color: #c25a2c;
@@ -1732,6 +1742,12 @@ label {
 .m-segment button.on {
   background: var(--text);
   color: var(--bg);
+}
+.m-model {
+  margin-top: 8px;
+  min-height: 46px;
+  border-radius: 14px;
+  padding: 10px 14px;
 }
 .m-textarea {
   width: 100%;

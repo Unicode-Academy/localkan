@@ -16,7 +16,9 @@ import {
   type TerminalKey,
 } from '@localkan/protocol';
 import { api } from '../api.ts';
-import { useNarrow, useScrollLock } from '../hooks.ts';
+import { useAgentModels, useNarrow, useScrollLock, type AgentModels } from '../hooks.ts';
+import { agentText, readLastModel } from '../models.ts';
+import { ModelSelect } from './ModelSelect.tsx';
 import { DiffView } from './DiffView.tsx';
 import { ImageAttachments, imagesFromClipboard, acceptImages } from './ImageAttachments.tsx';
 import { ParentSelect } from './ParentSelect.tsx';
@@ -49,6 +51,7 @@ export function CardPanel({
   // On a phone the panel covers the screen: the board behind it must not scroll. On a desktop
   // it is a side panel and the board stays usable.
   useScrollLock(useNarrow());
+  const models = useAgentModels(project.deviceId);
   const defaultTab: Tab = card.status === 'todo' ? 'task' : card.status === 'review' ? 'diff' : 'log';
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [busy, setBusy] = useState(false);
@@ -97,7 +100,9 @@ export function CardPanel({
           </div>
           <h2>{card.title}</h2>
           <div className="panel-meta">
-            <span className={`agent agent-${card.agent}`}>{AGENT_LABELS[card.agent]}</span>
+            <span className={`agent agent-${card.agent}`} title={agentText(card, models)}>
+              {agentText(card, models)}
+            </span>
             {card.mode === 'ask' && <span className="tag">Hỏi</span>}
             {card.branch && <code>{card.branch}</code>}
             {card.prUrl && (
@@ -187,7 +192,7 @@ export function CardPanel({
       </nav>
 
       <div className="panel-body">
-        {tab === 'task' && <TaskTab card={card} cards={cards} toasts={toasts} />}
+        {tab === 'task' && <TaskTab card={card} cards={cards} models={models} toasts={toasts} />}
         {tab === 'log' && <LogTab log={log} />}
         {tab === 'diff' && <ReviewTab card={card} project={project} busy={busy} run={run} toasts={toasts} />}
         {tab === 'terminal' && <TerminalTab card={card} busy={busy} run={run} />}
@@ -339,12 +344,13 @@ function KeyButtons({ card, busy, run }: { card: Card; busy: boolean; run: Run }
   );
 }
 
-function TaskTab({ card, cards, toasts }: { card: Card; cards: Card[]; toasts: ToastApi }) {
+function TaskTab({ card, cards, models, toasts }: { card: Card; cards: Card[]; models: AgentModels; toasts: ToastApi }) {
   const editable = card.status === 'todo';
   const [title, setTitle] = useState(card.title);
   const [prompt, setPrompt] = useState(card.prompt);
   const [interim, setInterim] = useState('');
   const [agent, setAgent] = useState<AgentId>(card.agent);
+  const [model, setModel] = useState<string | null>(card.model);
   const [mode, setMode] = useState<CardMode>(card.mode);
   const [uploading, setUploading] = useState(false);
   const [parentCardId, setParentCardId] = useState<string | null>(card.parentCardId);
@@ -353,6 +359,7 @@ function TaskTab({ card, cards, toasts }: { card: Card; cards: Card[]; toasts: T
     title !== card.title ||
     prompt !== card.prompt ||
     agent !== card.agent ||
+    model !== card.model ||
     mode !== card.mode ||
     parentCardId !== card.parentCardId;
 
@@ -422,13 +429,22 @@ function TaskTab({ card, cards, toasts }: { card: Card; cards: Card[]; toasts: T
       </div>
       <ParentSelect cards={cards} value={parentCardId} onChange={setParentCardId} excludeId={card.id} />
       <div className="row">
-        <select value={agent} onChange={(e) => setAgent(e.target.value as AgentId)} aria-label="Agent">
+        <select
+          value={agent}
+          onChange={(e) => {
+            const a = e.target.value as AgentId;
+            setAgent(a);
+            setModel(a === card.agent ? card.model : readLastModel(a, models));
+          }}
+          aria-label="Agent"
+        >
           {AGENTS.map((a) => (
             <option key={a} value={a}>
               {AGENT_LABELS[a]}
             </option>
           ))}
         </select>
+        <ModelSelect agent={agent} models={models} value={model} onChange={setModel} />
         <select value={mode} onChange={(e) => setMode(e.target.value as CardMode)} aria-label="Chế độ">
           <option value="act">Làm (sửa code)</option>
           <option value="ask">Hỏi (chỉ đọc)</option>
@@ -439,7 +455,7 @@ function TaskTab({ card, cards, toasts }: { card: Card; cards: Card[]; toasts: T
         disabled={!dirty}
         onClick={() =>
           api
-            .updateCard(card.id, { title, prompt, agent, mode, parentCardId })
+            .updateCard(card.id, { title, prompt, agent, model, mode, parentCardId })
             .then(() => toasts.info('Đã lưu.'), (e) => toasts.error(e.message))
         }
       >

@@ -211,6 +211,7 @@ impl Engine {
             project_id: p.project_id.clone(),
             title: p.title.clone(),
             agent: p.agent.clone(),
+            model: p.model.clone(),
             mode: p.mode.clone(),
             worktree_path: Some(root.clone()),
             branch: branch.clone(),

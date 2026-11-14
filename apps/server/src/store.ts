@@ -77,6 +77,7 @@ interface CardDoc {
   title: string;
   prompt: string;
   agent: AgentId;
+  model?: string | null;
   mode: CardMode;
   status: CardStatus;
   position: number;
@@ -149,6 +150,7 @@ export function toCard(c: CardDoc): Card {
     title: c.title,
     prompt: c.prompt,
     agent: c.agent,
+    model: c.model ?? null,
     mode: c.mode,
     status: c.status,
     position: c.position,
@@ -409,6 +411,7 @@ export class Store {
     title: string;
     prompt: string;
     agent: AgentId;
+    model: string | null;
     mode: CardMode;
     position: number;
     parentCardId: string | null;
@@ -421,6 +424,7 @@ export class Store {
       title: c.title,
       prompt: c.prompt,
       agent: c.agent,
+      model: c.model,
       mode: c.mode,
       status: 'todo',
       position: c.position,

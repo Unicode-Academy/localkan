@@ -68,8 +68,19 @@ pub async fn run(status: SharedStatus) -> Result<()> {
             }
         }
     };
+    // Model lists for the picker: at start, then a few times a day (CLIs add models).
+    let models = {
+        let engine = engine.clone();
+        async move {
+            loop {
+                engine.refresh_models().await;
+                tokio::time::sleep(Duration::from_secs(6 * 3600)).await;
+            }
+        }
+    };
     tokio::select! {
         _ = supervise => {}
+        _ = models => {}
         _ = crate::link::run(server, token, engine, tx, rx, status) => {}
     }
     Ok(())

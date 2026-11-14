@@ -1,7 +1,6 @@
 import { useState, type DragEvent } from 'react';
 import { CirclePause, CornerDownRight, Eye, Image, KeyRound } from 'lucide-react';
 import {
-  AGENT_LABELS,
   type Card,
   CARD_STATUS_LABELS,
   CARD_STATUSES,
@@ -10,6 +9,8 @@ import {
   type Project,
 } from '@localkan/protocol';
 import { api } from '../api.ts';
+import { useAgentModels, type AgentModels } from '../hooks.ts';
+import { agentText } from '../models.ts';
 import { NewCardDialog } from './NewCardDialog.tsx';
 import { RunBadge } from './RunBadge.tsx';
 import type { ToastApi } from './Toasts.tsx';
@@ -41,6 +42,7 @@ export function Board({
   const [dragId, setDragId] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<CardStatus | null>(null);
   const [creating, setCreating] = useState(false);
+  const models = useAgentModels(project.deviceId);
 
   const byStatus = (s: CardStatus) => cards.filter((c) => c.status === s).sort((a, b) => a.position - b.position);
 
@@ -106,6 +108,7 @@ export function Board({
                   <CardTile
                     key={c.id}
                     card={c}
+                    models={models}
                     parentTitle={c.parentCardId ? cards.find((x) => x.id === c.parentCardId)?.title ?? null : null}
                     onOpen={() => onOpen(c.id)}
                     onDragStart={(e) => {
@@ -125,18 +128,20 @@ export function Board({
           );
         })}
       </div>
-      {creating && <NewCardDialog projectId={project.id} cards={cards} onClose={() => setCreating(false)} toasts={toasts} />}
+      {creating && <NewCardDialog projectId={project.id} deviceId={project.deviceId} cards={cards} onClose={() => setCreating(false)} toasts={toasts} />}
     </div>
   );
 }
 
 function CardTile({
   card,
+  models,
   parentTitle,
   onOpen,
   onDragStart,
 }: {
   card: Card;
+  models: AgentModels;
   parentTitle: string | null;
   onOpen: () => void;
   onDragStart: (e: DragEvent) => void;
@@ -168,7 +173,9 @@ function CardTile({
       )}
       {card.error && <div className="tile-error">{card.error.slice(0, 120)}</div>}
       <div className="tile-meta">
-        <span className={`agent agent-${card.agent}`}>{AGENT_LABELS[card.agent]}</span>
+        <span className={`agent agent-${card.agent}`} title={agentText(card, models)}>
+          {agentText(card, models)}
+        </span>
         {card.mode === 'ask' && <span className="tag">Hỏi</span>}
         {card.repos.length > 0 && (
           <span className="tag" title={card.repos.map((r) => r.name).join(', ')}>

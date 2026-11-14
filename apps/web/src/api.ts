@@ -62,9 +62,9 @@ export const api = {
   deleteProject: (id: string) => call('DELETE', `/projects/${id}`),
 
   cards: (projectId: string) => call<Card[]>('GET', `/projects/${projectId}/cards`),
-  createCard: (projectId: string, c: Pick<Card, 'title' | 'prompt' | 'agent' | 'mode' | 'parentCardId'> & { autoPreview?: boolean }) =>
+  createCard: (projectId: string, c: Pick<Card, 'title' | 'prompt' | 'agent' | 'model' | 'mode' | 'parentCardId'> & { autoPreview?: boolean }) =>
     call<Card>('POST', `/projects/${projectId}/cards`, c),
-  updateCard: (id: string, patch: Partial<Pick<Card, 'title' | 'prompt' | 'agent' | 'mode' | 'position' | 'parentCardId' | 'autoPreview'>>) =>
+  updateCard: (id: string, patch: Partial<Pick<Card, 'title' | 'prompt' | 'agent' | 'model' | 'mode' | 'position' | 'parentCardId' | 'autoPreview'>>) =>
     call<Card>('PATCH', `/cards/${id}`, patch),
   previewStart: (id: string, tunnel: boolean) => call<PreviewInfo>('POST', `/cards/${id}/preview`, { tunnel }),
   previewStop: (id: string) => call('DELETE', `/cards/${id}/preview`),

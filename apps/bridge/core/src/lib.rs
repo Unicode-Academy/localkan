@@ -12,6 +12,7 @@ pub mod engine;
 pub mod git;
 pub mod github;
 pub mod link;
+pub mod models;
 pub mod orca;
 pub mod paths;
 pub mod preview;

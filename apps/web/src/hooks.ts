@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { FALLBACK_MODELS, type AgentId, type AgentModel, type Device } from '@localkan/protocol';
 
 export const NARROW = '(max-width: 760px)';
 
@@ -42,4 +43,16 @@ export function useScrollLock(active = true) {
     lock();
     return unlock;
   }, [active]);
+}
+
+/** Paired machines, for components that need what a bridge reported (agent models…). */
+export const DevicesContext = createContext<Device[]>([]);
+
+export type AgentModels = Partial<Record<AgentId, AgentModel[]>>;
+
+/** Models each agent offers on the machine `deviceId` (Claude's aliases until it reports). */
+export function useAgentModels(deviceId: string | null | undefined): AgentModels {
+  const devices = useContext(DevicesContext);
+  const reported = devices.find((d) => d.id === deviceId)?.info?.models;
+  return { ...FALLBACK_MODELS, ...reported };
 }

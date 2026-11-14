@@ -16,7 +16,7 @@ import { MobileApp } from './mobile/MobileApp.tsx';
 import { NotificationsDialog } from './components/NotificationsDialog.tsx';
 import { GitSettingsDialog } from './components/GitSettingsDialog.tsx';
 import { currentSubscription, pushSupport, syncPush } from './push.ts';
-import { useNarrow } from './hooks.ts';
+import { DevicesContext, useNarrow } from './hooks.ts';
 
 const LAST_PROJECT_KEY = 'localkan.lastProject';
 const VIEW_KEY = 'localkan.view';
@@ -231,7 +231,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
 
   if (mobile) {
     return (
-      <>
+      <DevicesContext.Provider value={devices}>
         <MobileApp
           email={email}
           projects={projects}
@@ -249,180 +249,182 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
         />
         {dialog === 'notify' && <NotificationsDialog onClose={() => setDialog(null)} toasts={toasts} />}
         <Toasts state={toasts} />
-      </>
+      </DevicesContext.Provider>
     );
   }
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden>
-            <Kanban />
-          </span>
-          Localkan
-        </div>
-        <select
-          className="project-select"
-          value={projectId ?? ''}
-          onChange={(e) => setProjectId(e.target.value || null)}
-          aria-label="Chọn bảng"
-        >
-          {projects.length === 0 && <option value="">Chưa có bảng</option>}
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-        <button className="btn ghost" onClick={() => setDialog('project')}>
-          <Plus /> Bảng mới
-        </button>
-        {project && (
-          <button
-            className="btn ghost"
-            onClick={() => setDialog('memory')}
-            title="Bộ nhớ dự án và ghi chú bàn giao giữa các thẻ"
-            aria-label="Bộ nhớ"
-          >
-            <Brain /><span className="topbar-label"> Bộ nhớ</span>
-          </button>
-        )}
-        {project && (
-          <button
-            className="btn ghost"
-            onClick={() => setDialog('preview')}
-            title="Chạy và xem trước thư mục dự án (nhánh đang checkout, thường là main)"
-            aria-label={`Xem trước ${project.baseRef ?? 'main'}`}
-          >
-            <Eye /><span className="topbar-label"> Xem trước {project.baseRef ?? 'main'}</span>
-            {project.preview?.status === 'running' && <span className="dot ok" style={{ marginLeft: 6 }} />}
-          </button>
-        )}
-        {project && (
-          <button
-            className="btn ghost"
-            onClick={() => setDialog('browser')}
-            title="Trình duyệt dùng chung với agent (trình duyệt của Orca trên máy chạy bridge): xem, bấm, gõ, đăng nhập từ xa"
-            aria-label="Trình duyệt"
-          >
-            <Globe /><span className="topbar-label"> Trình duyệt</span>
-          </button>
-        )}
-        {project && (
-          <button
-            className="btn ghost"
-            onClick={() => setDialog('git')}
-            title={
-              project.git.flow === 'pr'
-                ? `Git: Pull Request vào ${project.git.baseBranch ?? project.baseRef ?? 'main'}`
-                : project.git.flow === 'push'
-                  ? `Git: merge rồi push lên ${project.git.baseBranch ?? project.baseRef ?? 'main'}`
-                  : 'Git: merge cục bộ'
-            }
-            aria-label="Cài đặt git"
-          >
-            <GitBranch /><span className="topbar-label"> {project.repos.length ? `Git (${project.repos.length} repo)` : project.git.flow === 'pr' ? 'PR' : project.git.flow === 'push' ? 'Push' : 'Git'}</span>
-          </button>
-        )}
-        <div className="spacer" />
-        <button
-          className="btn ghost"
-          onClick={() => setDialog('notify')}
-          title={pushOn ? 'Thông báo đang bật trên thiết bị này' : 'Bật thông báo khi việc xong'}
-          aria-label="Thông báo"
-        >
-          {pushOn ? <Bell /> : <BellOff />}
-        </button>
-        <button className="btn ghost device-pill" onClick={() => setDialog('devices')} title="Máy chạy bridge">
-          <span className={`dot ${device?.online ? 'ok' : 'off'}`} />
-          {device ? device.name : `${devices.length} máy`}
-        </button>
-        <span className={`live ${live ? 'ok' : 'off'}`} title={live ? 'Đang nhận cập nhật trực tiếp' : 'Mất kết nối'}>
-          {live ? 'Live' : 'Offline'}
-        </span>
-        <span className="muted email">{email}</span>
-        {narrow && (
-          <button className="btn ghost" onClick={() => setViewPref('auto')} title="Giao diện gọn cho điện thoại">
-            <Smartphone />
-          </button>
-        )}
-        <button className="btn ghost" onClick={onLogout}>
-          Đăng xuất
-        </button>
-      </header>
-
-      {project ? (
-        <Board
-          project={project}
-          device={device}
-          cards={projectCards}
-          onOpen={setOpenCardId}
-          onRetryProject={() => api.retryProject(project.id).catch((e) => toasts.error(e.message))}
-          toasts={toasts}
-        />
-      ) : (
-        <div className="empty-state">
-          <h2>Bắt đầu</h2>
-          <ol>
-            <li>Ghép nối máy tính của bạn (nơi có repo, Orca và các agent CLI).</li>
-            <li>Tạo một bảng gắn với một repo git trên máy đó.</li>
-            <li>Thêm thẻ việc, kéo sang In Progress để agent bắt đầu.</li>
-          </ol>
-          <div className="row">
-            <button className="btn" onClick={() => setDialog('devices')}>
-              Ghép nối máy
-            </button>
-            <button className="btn primary" onClick={() => setDialog('project')} disabled={!devices.length}>
-              Tạo bảng
-            </button>
+    <DevicesContext.Provider value={devices}>
+      <div className="app">
+        <header className="topbar">
+          <div className="brand">
+            <span className="brand-mark" aria-hidden>
+              <Kanban />
+            </span>
+            Localkan
           </div>
-        </div>
-      )}
+          <select
+            className="project-select"
+            value={projectId ?? ''}
+            onChange={(e) => setProjectId(e.target.value || null)}
+            aria-label="Chọn bảng"
+          >
+            {projects.length === 0 && <option value="">Chưa có bảng</option>}
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button className="btn ghost" onClick={() => setDialog('project')}>
+            <Plus /> Bảng mới
+          </button>
+          {project && (
+            <button
+              className="btn ghost"
+              onClick={() => setDialog('memory')}
+              title="Bộ nhớ dự án và ghi chú bàn giao giữa các thẻ"
+              aria-label="Bộ nhớ"
+            >
+              <Brain /><span className="topbar-label"> Bộ nhớ</span>
+            </button>
+          )}
+          {project && (
+            <button
+              className="btn ghost"
+              onClick={() => setDialog('preview')}
+              title="Chạy và xem trước thư mục dự án (nhánh đang checkout, thường là main)"
+              aria-label={`Xem trước ${project.baseRef ?? 'main'}`}
+            >
+              <Eye /><span className="topbar-label"> Xem trước {project.baseRef ?? 'main'}</span>
+              {project.preview?.status === 'running' && <span className="dot ok" style={{ marginLeft: 6 }} />}
+            </button>
+          )}
+          {project && (
+            <button
+              className="btn ghost"
+              onClick={() => setDialog('browser')}
+              title="Trình duyệt dùng chung với agent (trình duyệt của Orca trên máy chạy bridge): xem, bấm, gõ, đăng nhập từ xa"
+              aria-label="Trình duyệt"
+            >
+              <Globe /><span className="topbar-label"> Trình duyệt</span>
+            </button>
+          )}
+          {project && (
+            <button
+              className="btn ghost"
+              onClick={() => setDialog('git')}
+              title={
+                project.git.flow === 'pr'
+                  ? `Git: Pull Request vào ${project.git.baseBranch ?? project.baseRef ?? 'main'}`
+                  : project.git.flow === 'push'
+                    ? `Git: merge rồi push lên ${project.git.baseBranch ?? project.baseRef ?? 'main'}`
+                    : 'Git: merge cục bộ'
+              }
+              aria-label="Cài đặt git"
+            >
+              <GitBranch /><span className="topbar-label"> {project.repos.length ? `Git (${project.repos.length} repo)` : project.git.flow === 'pr' ? 'PR' : project.git.flow === 'push' ? 'Push' : 'Git'}</span>
+            </button>
+          )}
+          <div className="spacer" />
+          <button
+            className="btn ghost"
+            onClick={() => setDialog('notify')}
+            title={pushOn ? 'Thông báo đang bật trên thiết bị này' : 'Bật thông báo khi việc xong'}
+            aria-label="Thông báo"
+          >
+            {pushOn ? <Bell /> : <BellOff />}
+          </button>
+          <button className="btn ghost device-pill" onClick={() => setDialog('devices')} title="Máy chạy bridge">
+            <span className={`dot ${device?.online ? 'ok' : 'off'}`} />
+            {device ? device.name : `${devices.length} máy`}
+          </button>
+          <span className={`live ${live ? 'ok' : 'off'}`} title={live ? 'Đang nhận cập nhật trực tiếp' : 'Mất kết nối'}>
+            {live ? 'Live' : 'Offline'}
+          </span>
+          <span className="muted email">{email}</span>
+          {narrow && (
+            <button className="btn ghost" onClick={() => setViewPref('auto')} title="Giao diện gọn cho điện thoại">
+              <Smartphone />
+            </button>
+          )}
+          <button className="btn ghost" onClick={onLogout}>
+            Đăng xuất
+          </button>
+        </header>
 
-      {openCard && project && (
-        <CardPanel
-          key={openCard.id}
-          card={openCard}
-          cards={projectCards}
-          project={project}
-          log={logs[openCard.id] ?? []}
-          setLog={setCardLog}
-          onClose={() => setOpenCardId(null)}
-          toasts={toasts}
-        />
-      )}
+        {project ? (
+          <Board
+            project={project}
+            device={device}
+            cards={projectCards}
+            onOpen={setOpenCardId}
+            onRetryProject={() => api.retryProject(project.id).catch((e) => toasts.error(e.message))}
+            toasts={toasts}
+          />
+        ) : (
+          <div className="empty-state">
+            <h2>Bắt đầu</h2>
+            <ol>
+              <li>Ghép nối máy tính của bạn (nơi có repo, Orca và các agent CLI).</li>
+              <li>Tạo một bảng gắn với một repo git trên máy đó.</li>
+              <li>Thêm thẻ việc, kéo sang In Progress để agent bắt đầu.</li>
+            </ol>
+            <div className="row">
+              <button className="btn" onClick={() => setDialog('devices')}>
+                Ghép nối máy
+              </button>
+              <button className="btn primary" onClick={() => setDialog('project')} disabled={!devices.length}>
+                Tạo bảng
+              </button>
+            </div>
+          </div>
+        )}
 
-      {dialog === 'notify' && <NotificationsDialog onClose={() => setDialog(null)} toasts={toasts} />}
-      {dialog === 'git' && project && <GitSettingsDialog project={project} onClose={() => setDialog(null)} toasts={toasts} />}
-      {dialog === 'memory' && project && <MemoryDialog project={project} onClose={() => setDialog(null)} toasts={toasts} />}
-      {dialog === 'browser' && project && (
-        <Dialog title={`Trình duyệt dùng chung · ${project.name}`} onClose={() => setDialog(null)} wide>
-          <RemoteBrowser project={project} cards={projectCards} toasts={toasts} />
-        </Dialog>
-      )}
-      {dialog === 'preview' && project && (
-        <Dialog title={`Xem trước ${project.baseRef ?? 'main'} · ${project.name}`} onClose={() => setDialog(null)} wide>
-          <ProjectPreview project={project} toasts={toasts} />
-        </Dialog>
-      )}
-      {dialog === 'devices' && (
-        <DevicesDialog devices={devices} onClose={() => setDialog(null)} onChanged={loadAll} toasts={toasts} />
-      )}
-      {dialog === 'project' && (
-        <ProjectDialog
-          devices={devices}
-          onClose={() => setDialog(null)}
-          onCreated={(p) => {
-            setProjects((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]));
-            setProjectId(p.id);
-            setDialog(null);
-          }}
-          onPair={() => setDialog('devices')}
-          toasts={toasts}
-        />
-      )}
-      <Toasts state={toasts} />
-    </div>
+        {openCard && project && (
+          <CardPanel
+            key={openCard.id}
+            card={openCard}
+            cards={projectCards}
+            project={project}
+            log={logs[openCard.id] ?? []}
+            setLog={setCardLog}
+            onClose={() => setOpenCardId(null)}
+            toasts={toasts}
+          />
+        )}
+
+        {dialog === 'notify' && <NotificationsDialog onClose={() => setDialog(null)} toasts={toasts} />}
+        {dialog === 'git' && project && <GitSettingsDialog project={project} onClose={() => setDialog(null)} toasts={toasts} />}
+        {dialog === 'memory' && project && <MemoryDialog project={project} onClose={() => setDialog(null)} toasts={toasts} />}
+        {dialog === 'browser' && project && (
+          <Dialog title={`Trình duyệt dùng chung · ${project.name}`} onClose={() => setDialog(null)} wide>
+            <RemoteBrowser project={project} cards={projectCards} toasts={toasts} />
+          </Dialog>
+        )}
+        {dialog === 'preview' && project && (
+          <Dialog title={`Xem trước ${project.baseRef ?? 'main'} · ${project.name}`} onClose={() => setDialog(null)} wide>
+            <ProjectPreview project={project} toasts={toasts} />
+          </Dialog>
+        )}
+        {dialog === 'devices' && (
+          <DevicesDialog devices={devices} onClose={() => setDialog(null)} onChanged={loadAll} toasts={toasts} />
+        )}
+        {dialog === 'project' && (
+          <ProjectDialog
+            devices={devices}
+            onClose={() => setDialog(null)}
+            onCreated={(p) => {
+              setProjects((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]));
+              setProjectId(p.id);
+              setDialog(null);
+            }}
+            onPair={() => setDialog('devices')}
+            toasts={toasts}
+          />
+        )}
+        <Toasts state={toasts} />
+      </div>
+    </DevicesContext.Provider>
   );
 }

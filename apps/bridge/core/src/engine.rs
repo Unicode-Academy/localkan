@@ -71,6 +71,8 @@ pub struct CardRt {
     pub project_id: String,
     pub title: String,
     pub agent: String,
+    /// Model the agent CLI is started with; None runs its default.
+    pub model: Option<String>,
     pub mode: String,
     pub worktree_path: Option<String>,
     pub branch: Option<String>,
@@ -129,6 +131,8 @@ pub struct Engine {
     previews: crate::preview::Previews,
     /// Cards whose PR is being published or refreshed right now.
     pr_busy: std::sync::Mutex<HashSet<String>>,
+    /// Models each agent CLI lists, refreshed in the background (`refresh_models`).
+    models: std::sync::RwLock<std::collections::BTreeMap<String, Vec<crate::models::AgentModel>>>,
 }
 
 fn bad_params(e: serde_json::Error) -> BridgeError {
@@ -184,6 +188,7 @@ impl Engine {
             server,
             previews: crate::preview::Previews::new(crate::config::home_dir().join("previews")),
             pr_busy: std::sync::Mutex::new(HashSet::new()),
+            models: std::sync::RwLock::new(Default::default()),
         }
     }
 
@@ -212,7 +217,25 @@ impl Engine {
         agents.insert("antigravity".to_string(), which("agy").is_some());
         agents.insert("codex".to_string(), which("codex").is_some());
         agents.insert("grok".to_string(), which("grok").is_some());
-        BridgeInfo { device_name: self.device_name.clone(), version: crate::VERSION.into(), orca, agents }
+        let models = self.models.read().map(|m| m.clone()).unwrap_or_default();
+        BridgeInfo { device_name: self.device_name.clone(), version: crate::VERSION.into(), orca, agents, models }
+    }
+
+    /// Ask each agent CLI for its models; when the lists changed, send the server a fresh
+    /// `hello` so the model picker shows them.
+    pub async fn refresh_models(&self) {
+        let found = crate::models::discover().await;
+        let changed = match self.models.write() {
+            Ok(mut m) if *m != found => {
+                *m = found;
+                true
+            }
+            _ => false,
+        };
+        if changed {
+            let info = self.info().await;
+            let _ = self.out.send(Outgoing::Event { event: "hello".into(), data: serde_json::to_value(info).unwrap_or_default() });
+        }
     }
 
     /// Re-send the last known state of every card and board preview (after a reconnect).
@@ -658,6 +681,7 @@ impl Engine {
             project_id: p.project_id.clone(),
             title: p.title.clone(),
             agent: p.agent.clone(),
+            model: p.model.clone(),
             mode: p.mode.clone(),
             worktree_path: Some(path.clone()),
             branch: branch.clone(),
@@ -745,7 +769,13 @@ impl Engine {
         if let (Some(cmd), None) = (&self.mock_cmd, &retry) {
             return self.dispatch_mock(&card, cmd, spec, &coord, terminal).await;
         }
-        if PRELAUNCH_AGENTS.contains(&card.agent.as_str()) && terminal.is_none() && retry.is_none() {
+        let model = card.model.as_deref().filter(|m| !m.is_empty());
+        if let Some(m) = model.filter(|m| !crate::models::valid_id(m)) {
+            bail!("Tên model không hợp lệ: {m}");
+        }
+        // Orca takes `--model` only for Claude and Codex: agy with a model is launched here too.
+        let prelaunch = PRELAUNCH_AGENTS.contains(&card.agent.as_str()) || (model.is_some() && card.agent != "codex");
+        if prelaunch && terminal.is_none() && retry.is_none() {
             // Claude can open startup dialogs (folder trust, bypass-permissions warning) whose
             // default answer is "No, exit". Orca would type the task into them and Claude
             // would quit, so launch Claude first, let the human answer any dialog, and
@@ -760,7 +790,12 @@ impl Engine {
                 args.extend(["--spec", spec, "--task-title", &card.title]);
                 match &terminal {
                     Some(t) => args.extend(["--terminal", t.as_str()]),
-                    None => args.extend(["--agent", &card.agent]),
+                    None => {
+                        args.extend(["--agent", &card.agent]);
+                        if let Some(m) = model {
+                            args.extend(["--model", m]);
+                        }
+                    }
                 }
             }
         }
@@ -1374,8 +1409,14 @@ impl Engine {
     async fn prelaunch_agent(&self, card: &CardRt, wt: &str, spec: &str) -> Result<()> {
         let orca = self.orca()?;
         let title = format!("{} · {}", card.agent, card.title);
+        // The bare agent name lets Orca add the user's launch arguments itself; with a model the
+        // command is built from the same settings.
+        let launch_cmd = match card.model.as_deref().filter(|m| !m.is_empty()) {
+            Some(m) => crate::models::launch_command(&card.agent, m),
+            None => crate::models::binary(&card.agent).to_string(),
+        };
         let t = orca
-            .call(&["terminal", "create", "--worktree", &format!("path:{wt}"), "--title", &title, "--command", &card.agent])
+            .call(&["terminal", "create", "--worktree", &format!("path:{wt}"), "--title", &title, "--command", &launch_cmd])
             .await
             .context("không mở được terminal cho agent")?;
         let h = s(&t["terminal"]["handle"]).ok_or_else(|| anyhow!("Orca không trả handle terminal"))?;
@@ -1385,7 +1426,7 @@ impl Engine {
             c.pending_spec = Some(spec.to_string());
         })
         .await;
-        self.sys(&card.card_id, format!("Đã mở {} trong worktree; chờ agent sẵn sàng.", card.agent)).await;
+        self.sys(&card.card_id, format!("Đã mở {} trong worktree; chờ agent sẵn sàng.", launch_cmd)).await;
         self.advance_startup(&card.card_id).await
     }
 
@@ -1395,9 +1436,20 @@ impl Engine {
         let card = self.card(card_id).await?;
         let Some(h) = card.startup_terminal.clone() else { return Ok(()) };
         let started = std::time::Instant::now();
+        let known_screens = PRELAUNCH_AGENTS.contains(&card.agent.as_str());
         loop {
             let lines = self.screen_of(&h).await.unwrap_or_default();
-            match classify_startup(&lines) {
+            let state = if known_screens {
+                classify_startup(&lines)
+            } else if started.elapsed() > Duration::from_secs(8) {
+                // No known screens for this agent (agy started with a model): give it a moment,
+                // then hand over to Orca, which checks readiness (and reports a startup prompt
+                // as `agent_readiness`) on dispatch.
+                Startup::Ready
+            } else {
+                Startup::Unknown
+            };
+            match state {
                 Startup::Ready => {
                     let spec = card.pending_spec.clone().unwrap_or_else(|| compose_spec(&card.title, "", &card.mode, &[], ""));
                     self.update_card(card_id, |c| {
@@ -1515,6 +1567,7 @@ impl Engine {
             c.startup_terminal = None;
             c.pending_spec = None;
             c.agent = p.agent.clone();
+            c.model = p.model.clone();
             c.mode = p.mode.clone();
             c.title = p.title.clone();
         })

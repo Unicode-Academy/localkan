@@ -1,19 +1,25 @@
 import { useState, type FormEvent } from 'react';
 import { AGENT_LABELS, AGENTS, type AgentId, type Card, type CardMode } from '@localkan/protocol';
 import { api } from '../api.ts';
+import { useAgentModels } from '../hooks.ts';
+import { readLastAgent, readLastModel, saveLastChoice } from '../models.ts';
 import { Dialog } from './Dialog.tsx';
 import { ImageAttachments, imagesFromClipboard, acceptImages } from './ImageAttachments.tsx';
+import { ModelSelect } from './ModelSelect.tsx';
 import { ParentSelect } from './ParentSelect.tsx';
 import type { ToastApi } from './Toasts.tsx';
 import { appendPhrase, VoiceButton } from './VoiceButton.tsx';
 
 export function NewCardDialog({
   projectId,
+  deviceId,
   cards,
   onClose,
   toasts,
 }: {
   projectId: string;
+  /** Machine the board runs on: its agents' model lists. */
+  deviceId: string;
   cards: Card[];
   onClose: () => void;
   toasts: ToastApi;
@@ -21,7 +27,9 @@ export function NewCardDialog({
   const [title, setTitle] = useState('');
   const [prompt, setPrompt] = useState('');
   const [interim, setInterim] = useState('');
-  const [agent, setAgent] = useState<AgentId>('claude');
+  const models = useAgentModels(deviceId);
+  const [agent, setAgent] = useState<AgentId>(readLastAgent);
+  const [model, setModel] = useState<string | null>(() => readLastModel(agent, models));
   const [mode, setMode] = useState<CardMode>('act');
   const [images, setImages] = useState<File[]>([]);
   const [parentCardId, setParentCardId] = useState<string | null>(null);
@@ -36,7 +44,8 @@ export function NewCardDialog({
     }
     setBusy(true);
     try {
-      const card = await api.createCard(projectId, { title: finalTitle, prompt, agent, mode, parentCardId });
+      const card = await api.createCard(projectId, { title: finalTitle, prompt, agent, model, mode, parentCardId });
+      saveLastChoice(agent, model);
       if (images.length) {
         try {
           await api.uploadAttachments(card.id, images);
@@ -98,13 +107,22 @@ export function NewCardDialog({
         </div>
         <ParentSelect cards={cards} value={parentCardId} onChange={setParentCardId} />
         <div className="row">
-          <select value={agent} onChange={(e) => setAgent(e.target.value as AgentId)} aria-label="Agent">
+          <select
+            value={agent}
+            onChange={(e) => {
+              const a = e.target.value as AgentId;
+              setAgent(a);
+              setModel(readLastModel(a, models));
+            }}
+            aria-label="Agent"
+          >
             {AGENTS.map((a) => (
               <option key={a} value={a}>
                 {AGENT_LABELS[a]}
               </option>
             ))}
           </select>
+          <ModelSelect agent={agent} models={models} value={model} onChange={setModel} />
           <select value={mode} onChange={(e) => setMode(e.target.value as CardMode)} aria-label="Chế độ">
             <option value="act">Làm (sửa code)</option>
             <option value="ask">Hỏi (chỉ đọc)</option>

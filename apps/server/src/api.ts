@@ -5,6 +5,7 @@ import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import {
   AGENTS,
+  MODEL_ID_RE,
   ATTACHMENT_LIMITS,
   type AgentId,
   type Card,
@@ -397,6 +398,13 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     return agent as AgentId;
   };
   const parseMode = (mode: unknown): CardMode => (mode === 'ask' ? 'ask' : 'act');
+  // The id ends up in the agent's launch command on the bridge: a strict character set.
+  const parseModel = (model: unknown): string | null => {
+    if (model === null || model === undefined || model === '') return null;
+    const id = String(model).trim();
+    if (!MODEL_ID_RE.test(id)) throw new HttpError(400, 'Tên model không hợp lệ.');
+    return id;
+  };
 
   api.get('/cards/:id', async (c) => c.json((await ownCard(c, c.req.param('id'))).card));
 
@@ -438,6 +446,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       title?: string;
       prompt?: string;
       agent?: string;
+      model?: string | null;
       mode?: string;
       parentCardId?: string | null;
       autoPreview?: boolean;
@@ -451,6 +460,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       title: b.title.trim(),
       prompt: (b.prompt ?? '').trim(),
       agent: parseAgent(b.agent ?? 'claude'),
+      model: parseModel(b.model),
       mode: parseMode(b.mode),
       position: (await store.maxTodoPosition(p.id)) + 1,
       parentCardId,
@@ -461,7 +471,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
 
   api.patch('/cards/:id', async (c) => {
     const { card } = await ownCard(c, c.req.param('id'));
-    const b = await body<Partial<Pick<Card, 'title' | 'prompt' | 'agent' | 'mode' | 'position' | 'parentCardId' | 'autoPreview'>>>(c);
+    const b = await body<Partial<Pick<Card, 'title' | 'prompt' | 'agent' | 'model' | 'mode' | 'position' | 'parentCardId' | 'autoPreview'>>>(c);
     const patch: CardPatch = {};
     if (b.position !== undefined) patch.position = Number(b.position);
     if (b.autoPreview !== undefined) patch.autoPreview = b.autoPreview === true;
@@ -470,6 +480,9 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       if (b.title !== undefined) patch.title = String(b.title).trim() || card.title;
       if (b.prompt !== undefined) patch.prompt = String(b.prompt);
       if (b.agent !== undefined) patch.agent = parseAgent(b.agent);
+      // A model belongs to one agent: switching agents without naming a model resets it.
+      if (b.model !== undefined) patch.model = parseModel(b.model);
+      else if (patch.agent && patch.agent !== card.agent) patch.model = null;
       if (b.mode !== undefined) patch.mode = parseMode(b.mode);
       if (b.parentCardId !== undefined)
         patch.parentCardId = b.parentCardId ? await checkParent(card.projectId, b.parentCardId, card.id) : null;
@@ -546,6 +559,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
         title: card.title,
         prompt: card.prompt,
         agent: card.agent,
+        model: card.model,
         mode: card.mode,
         attachments: card.attachments.map(({ id, name, mime }) => ({ id, name, mime })),
         parent: await parentRef(card),
@@ -577,6 +591,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
         title: card.title,
         prompt: card.prompt,
         agent: card.agent,
+        model: card.model,
         mode: card.mode,
         attachments: card.attachments.map(({ id, name, mime }) => ({ id, name, mime })),
         parent: await parentRef(card),

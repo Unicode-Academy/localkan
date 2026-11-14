@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Bell, BellOff, Check, CircleDot, ExternalLink, KeyRound, Menu, Mic, Play, RotateCcw } from 'lucide-react';
-import { AGENT_LABELS, type Card, type Device, type Project } from '@localkan/protocol';
+import { type Card, type Device, type Project } from '@localkan/protocol';
 import { api } from '../api.ts';
+import { useAgentModels } from '../hooks.ts';
+import { agentText } from '../models.ts';
 import { CiLabel, ciSummary } from '../components/PrPanel.tsx';
 import type { ToastApi } from '../components/Toasts.tsx';
 import { badge, bucket, byUrgency, splitOptions, timeAgo, type Bucket } from './status.ts';
@@ -123,6 +125,7 @@ export function Overview({
 }
 
 function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project; toasts: ToastApi; go: (h: string) => void }) {
+  const models = useAgentModels(project?.deviceId);
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState('');
   const b = badge(card);
@@ -194,7 +197,7 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
           </p>
         )}
         <div className="m-meta">
-          {AGENT_LABELS[card.agent]}
+          {agentText(card, models)}
           {card.branch && (
             <>
               {' · '}

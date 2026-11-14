@@ -166,6 +166,8 @@ pub struct BridgeInfo {
     pub version: String,
     pub orca: OrcaInfo,
     pub agents: BTreeMap<String, bool>,
+    /// Models each installed agent CLI lists (for the model picker).
+    pub models: BTreeMap<String, Vec<crate::models::AgentModel>>,
 }
 
 // -- request params ----------------------------------------------------------
@@ -186,6 +188,9 @@ pub struct CardStart {
     pub title: String,
     pub prompt: String,
     pub agent: String,
+    /// None: the CLI's default model.
+    #[serde(default)]
+    pub model: Option<String>,
     pub mode: String,
     #[serde(default)]
     pub attachments: Vec<AttachmentRef>,

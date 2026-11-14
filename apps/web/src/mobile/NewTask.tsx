@@ -1,11 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SendHorizontal, X } from 'lucide-react';
 import { AGENT_LABELS, AGENTS, type AgentId, type Card, type Project } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { ImageAttachments } from '../components/ImageAttachments.tsx';
+import { ModelSelect } from '../components/ModelSelect.tsx';
 import { ParentSelect } from '../components/ParentSelect.tsx';
 import type { ToastApi } from '../components/Toasts.tsx';
 import { appendPhrase, VoiceButton } from '../components/VoiceButton.tsx';
+import { useAgentModels } from '../hooks.ts';
+import { agentText, readLastAgent, readLastModel, saveLastChoice } from '../models.ts';
 
 const TEMPLATES: { label: string; text: string }[] = [
   {
@@ -22,17 +25,6 @@ const TEMPLATES: { label: string; text: string }[] = [
     text: 'Nâng cấp dependencies lên bản mới nhất còn tương thích, chạy build và test, ghi lại những gì đã đổi.',
   },
 ];
-
-const LAST_AGENT_KEY = 'localkan.lastAgent';
-
-function readAgent(): AgentId {
-  try {
-    const a = localStorage.getItem(LAST_AGENT_KEY);
-    return (AGENTS as readonly string[]).includes(a ?? '') ? (a as AgentId) : 'claude';
-  } catch {
-    return 'claude';
-  }
-}
 
 export function NewTask({
   projects,
@@ -52,7 +44,19 @@ export function NewTask({
   const [projectId, setProjectId] = useState<string | null>(
     projects.some((p) => p.id === initialProjectId) ? initialProjectId : (projects[0]?.id ?? null),
   );
-  const [agent, setAgent] = useState<AgentId>(readAgent);
+  // Opened before the boards loaded (e.g. reloading on this screen): pick one once they arrive.
+  useEffect(() => {
+    if (!projectId && projects.length)
+      setProjectId(projects.some((p) => p.id === initialProjectId) ? initialProjectId : projects[0].id);
+  }, [projects, projectId, initialProjectId]);
+  const [agent, setAgent] = useState<AgentId>(readLastAgent);
+  const deviceId = projects.find((p) => p.id === projectId)?.deviceId;
+  const models = useAgentModels(deviceId);
+  const [model, setModel] = useState<string | null>(() => readLastModel(agent, models));
+  // Another board may run on another machine, with other models.
+  useEffect(() => {
+    setModel((m) => (m && models[agent]?.some((x) => x.id === m) ? m : readLastModel(agent, models)));
+  }, [deviceId]);
   const [prompt, setPrompt] = useState('');
   const [interim, setInterim] = useState('');
   const [images, setImages] = useState<File[]>([]);
@@ -72,16 +76,13 @@ export function NewTask({
     }
     setBusy(true);
     try {
-      try {
-        localStorage.setItem(LAST_AGENT_KEY, agent);
-      } catch {
-        /* storage unavailable */
-      }
+      saveLastChoice(agent, model);
       const title = deriveTitle(text);
       const card = await api.createCard(project.id, {
         title,
         prompt: text,
         agent,
+        model,
         mode: askOnly ? 'ask' : 'act',
         parentCardId,
         autoPreview: autoPreview && !askOnly,
@@ -91,7 +92,7 @@ export function NewTask({
       }
       if (project.status === 'ready') {
         await api.start(card.id);
-        toasts.info(`Đã giao cho ${AGENT_LABELS[agent]}.`);
+        toasts.info(`Đã giao cho ${agentText({ agent, model }, models)}.`);
       } else {
         toasts.info('Đã tạo việc. Bảng chưa sẵn sàng nên việc nằm ở "Chưa giao".');
       }
@@ -132,11 +133,21 @@ export function NewTask({
           <div className="m-label">Agent</div>
           <div className="m-segment" role="radiogroup" aria-label="Agent">
             {AGENTS.map((a) => (
-              <button key={a} role="radio" aria-checked={agent === a} className={agent === a ? 'on' : ''} onClick={() => setAgent(a)}>
+              <button
+                key={a}
+                role="radio"
+                aria-checked={agent === a}
+                className={agent === a ? 'on' : ''}
+                onClick={() => {
+                  setAgent(a);
+                  setModel(readLastModel(a, models));
+                }}
+              >
                 {AGENT_LABELS[a]}
               </button>
             ))}
           </div>
+          <ModelSelect className="m-model" agent={agent} models={models} value={model} onChange={setModel} />
         </section>
 
         <section>

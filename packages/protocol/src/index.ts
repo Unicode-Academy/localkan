@@ -15,6 +15,28 @@ export const AGENT_LABELS: Record<AgentId, string> = {
   grok: 'Grok',
 };
 
+/** A model an agent CLI offers (as listed by the CLI on the bridge machine). */
+export interface AgentModel {
+  id: string;
+  label: string;
+  /** The CLI's own default. */
+  default?: boolean;
+}
+
+/** Model ids travel into a shell command on the bridge: letters, digits and `.:/[]_-` only. */
+export const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:\/[\]-]{0,99}$/;
+
+/** Claude Code takes family aliases that always point at the newest model; used until the
+ *  bridge has reported its own lists. */
+export const FALLBACK_MODELS: Partial<Record<AgentId, AgentModel[]>> = {
+  claude: [
+    { id: 'fable', label: 'Fable' },
+    { id: 'opus', label: 'Opus' },
+    { id: 'sonnet', label: 'Sonnet' },
+    { id: 'haiku', label: 'Haiku' },
+  ],
+};
+
 /** Kanban columns. `needs_input` is the Human-in-the-loop column. */
 export const CARD_STATUSES = ['todo', 'in_progress', 'needs_input', 'review', 'done'] as const;
 export type CardStatus = (typeof CARD_STATUSES)[number];
@@ -152,6 +174,8 @@ export interface Card {
   title: string;
   prompt: string;
   agent: AgentId;
+  /** Model passed to the agent CLI; null runs the CLI's default. */
+  model: string | null;
   mode: CardMode;
   status: CardStatus;
   position: number;
@@ -290,6 +314,8 @@ export interface BridgeInfo {
   version: string;
   orca: { reachable: boolean; version?: string; error?: string };
   agents: Partial<Record<AgentId, boolean>>;
+  /** Models each installed agent offers (missing on older bridges). */
+  models?: Partial<Record<AgentId, AgentModel[]>>;
 }
 
 export interface Device {
@@ -417,6 +443,8 @@ export interface BridgeMethods {
       title: string;
       prompt: string;
       agent: AgentId;
+      /** null: the CLI's default model. */
+      model: string | null;
       mode: CardMode;
       /** Images to copy into the worktree; the bridge downloads them from the server. */
       attachments: Pick<Attachment, 'id' | 'name' | 'mime'>[];

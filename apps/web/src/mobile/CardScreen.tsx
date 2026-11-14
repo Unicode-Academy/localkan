@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, Check, ChevronLeft, CircleStop, Ellipsis, ExternalLink, GitMerge, ImageIcon, Mic, Play, RefreshCw, RotateCcw, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import {
-  AGENT_LABELS,
   type Card,
   type DiffResult,
   type LogLine,
@@ -11,7 +10,8 @@ import {
   type Screenshot,
 } from '@localkan/protocol';
 import { api } from '../api.ts';
-import { useScrollLock } from '../hooks.ts';
+import { useAgentModels, useScrollLock } from '../hooks.ts';
+import { agentText } from '../models.ts';
 import { FinishBox, LogTab, WaitingBox, type Run } from '../components/CardPanel.tsx';
 import { DiffView } from '../components/DiffView.tsx';
 import { ciSummary, PrPanel, ReposPanel, shipPlan } from '../components/PrPanel.tsx';
@@ -42,6 +42,7 @@ export function CardScreen({
   onFull: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const models = useAgentModels(project.deviceId);
   const run: Run = async (fn, ok) => {
     setBusy(true);
     try {
@@ -97,7 +98,7 @@ export function CardScreen({
         </span>
         <h2 className="m-detail-title">{card.title}</h2>
         <div className="m-meta">
-          {project.name} · {AGENT_LABELS[card.agent]} · {timeAgo(card.updatedAt)}
+          {project.name} · {agentText(card, models)} · {timeAgo(card.updatedAt)}
           {card.branch && (
             <>
               {' · '}
