@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Bell, BellOff, Brain, Eye, GitBranch, Globe, Kanban, Plus, Smartphone } from 'lucide-react';
 import type { Card, Device, LogLine, Project, ServerToWeb } from '@localkan/protocol';
 import { api, type AuthState, connectLive } from './api.ts';
 import { AuthScreen } from './components/AuthScreen.tsx';
@@ -269,7 +270,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark" aria-hidden>
-            ▦
+            <Kanban />
           </span>
           Localkan
         </div>
@@ -287,7 +288,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
           ))}
         </select>
         <button className="btn ghost" onClick={() => setDialog('project')}>
-          + Bảng mới
+          <Plus /> Bảng mới
         </button>
         {project && (
           <button
@@ -296,7 +297,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
             title="Bộ nhớ dự án và ghi chú bàn giao giữa các thẻ"
             aria-label="Bộ nhớ"
           >
-            🧠<span className="topbar-label"> Bộ nhớ</span>
+            <Brain /><span className="topbar-label"> Bộ nhớ</span>
           </button>
         )}
         {project && (
@@ -306,7 +307,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
             title="Chạy và xem trước thư mục dự án (nhánh đang checkout, thường là main)"
             aria-label={`Xem trước ${project.baseRef ?? 'main'}`}
           >
-            👁<span className="topbar-label"> Xem trước {project.baseRef ?? 'main'}</span>
+            <Eye /><span className="topbar-label"> Xem trước {project.baseRef ?? 'main'}</span>
             {project.preview?.status === 'running' && <span className="dot ok" style={{ marginLeft: 6 }} />}
           </button>
         )}
@@ -317,7 +318,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
             title="Trình duyệt dùng chung với agent (trình duyệt của Orca trên máy chạy bridge): xem, bấm, gõ, đăng nhập từ xa"
             aria-label="Trình duyệt"
           >
-            🌐<span className="topbar-label"> Trình duyệt</span>
+            <Globe /><span className="topbar-label"> Trình duyệt</span>
           </button>
         )}
         {project && (
@@ -333,7 +334,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
             }
             aria-label="Cài đặt git"
           >
-            ⑂<span className="topbar-label"> {project.repos.length ? `Git (${project.repos.length} repo)` : project.git.flow === 'pr' ? 'PR' : project.git.flow === 'push' ? 'Push' : 'Git'}</span>
+            <GitBranch /><span className="topbar-label"> {project.repos.length ? `Git (${project.repos.length} repo)` : project.git.flow === 'pr' ? 'PR' : project.git.flow === 'push' ? 'Push' : 'Git'}</span>
           </button>
         )}
         <div className="spacer" />
@@ -343,7 +344,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
           title={pushOn ? 'Thông báo đang bật trên thiết bị này' : 'Bật thông báo khi việc xong'}
           aria-label="Thông báo"
         >
-          {pushOn ? '🔔' : '🔕'}
+          {pushOn ? <Bell /> : <BellOff />}
         </button>
         <button className="btn ghost device-pill" onClick={() => setDialog('devices')} title="Máy chạy bridge">
           <span className={`dot ${device?.online ? 'ok' : 'off'}`} />
@@ -355,7 +356,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
         <span className="muted email">{email}</span>
         {narrow && (
           <button className="btn ghost" onClick={() => setViewPref('auto')} title="Giao diện gọn cho điện thoại">
-            📱
+            <Smartphone />
           </button>
         )}
         <button className="btn ghost" onClick={onLogout}>

@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 
 export function Dialog({
   title,
@@ -23,7 +24,7 @@ export function Dialog({
         <div className="dialog-head">
           <h2>{title}</h2>
           <button className="btn ghost icon" onClick={onClose} aria-label="Đóng">
-            ✕
+            <X />
           </button>
         </div>
         <div className="dialog-body">{children}</div>

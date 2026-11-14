@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Camera, Check, ChevronLeft, CircleStop, Ellipsis, ExternalLink, GitMerge, ImageIcon, Mic, Play, RefreshCw, RotateCcw, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import {
   AGENT_LABELS,
@@ -81,17 +82,17 @@ export function CardScreen({
     <div className="m-screen">
       <header className="m-bar">
         <button className="m-icon-btn" onClick={onBack} aria-label="Quay lại">
-          ←
+          <ChevronLeft />
         </button>
         <h1>{heading}</h1>
         <button className="m-icon-btn" onClick={onFull} aria-label="Chi tiết đầy đủ" title="Chi tiết đầy đủ (terminal, nhiệm vụ…)">
-          ⋯
+          <Ellipsis />
         </button>
       </header>
 
       <div className="m-detail">
         <span className={`m-badge ${b.tone}`}>
-          <span aria-hidden>{b.icon}</span> {b.label}
+          <b.Icon aria-hidden /> {b.label}
         </span>
         <h2 className="m-detail-title">{card.title}</h2>
         <div className="m-meta">
@@ -118,7 +119,7 @@ export function CardScreen({
               <span>Tiến độ</span>
               {(card.status === 'in_progress' || card.status === 'needs_input') && (
                 <button className="m-btn small" disabled={busy} onClick={() => confirm('Dừng agent của việc này?') && run(() => api.stop(card.id), 'Đã dừng agent.')}>
-                  ■ Dừng
+                  <CircleStop /> Dừng
                 </button>
               )}
             </div>
@@ -129,7 +130,7 @@ export function CardScreen({
         {kind === 'failed' && (
           <div className="m-row">
             <button className="m-btn primary" disabled={busy} onClick={() => run(() => api.retry(card.id), 'Đã giao lại cho agent.')}>
-              ↻ Chạy lại từ đầu
+              <RotateCcw /> Chạy lại từ đầu
             </button>
             <button
               className="m-btn danger"
@@ -147,7 +148,7 @@ export function CardScreen({
             <p className="m-prewrap">{card.prompt || card.title}</p>
             <div className="m-row">
               <button className="m-btn primary" disabled={busy || project.status !== 'ready'} onClick={() => run(() => api.start(card.id), 'Đã giao việc cho agent.')}>
-                ▶ Giao cho agent
+                <Play /> Giao cho agent
               </button>
               <button className="m-btn danger" disabled={busy} onClick={() => confirm('Xóa việc này?') && run(() => api.deleteCard(card.id).then(onBack))}>
                 Xóa
@@ -161,7 +162,7 @@ export function CardScreen({
             {card.summary && <p>{card.summary}</p>}
             {card.prUrl && (
               <a className="m-btn" href={card.prUrl} target="_blank" rel="noreferrer">
-                ↗ Mở Pull Request
+                <ExternalLink /> Mở Pull Request
               </a>
             )}
           </section>
@@ -259,8 +260,8 @@ function Review({
               </span>
             )}
           </span>
-          <button className="m-btn small" onClick={load}>
-            ↻
+          <button className="m-btn small" onClick={load} aria-label="Tải lại diff">
+            <RefreshCw />
           </button>
         </div>
         {diffError && <p className="error-text small">{diffError}</p>}
@@ -302,11 +303,11 @@ function Review({
       <div className="m-bottom m-decide">
         <div className="m-row">
           <button className="m-btn big" disabled={busy} onClick={() => setAsking(true)}>
-            🎤 Yêu cầu sửa{comments.length ? ` (${comments.length})` : ''}
+            <Mic /> Yêu cầu sửa{comments.length ? ` (${comments.length})` : ''}
           </button>
           {isAsk ? (
             <button className="m-btn big primary" disabled={busy} onClick={() => run(() => api.finish(card.id, 'discard', ''), 'Đã đóng việc.')}>
-              ✓ Xong
+              <Check /> Xong
             </button>
           ) : multi ? (
             <button
@@ -317,11 +318,11 @@ function Review({
                 run(() => api.finish(card.id, 'ship', card.title), 'Đã hoàn tất các repo.')
               }
             >
-              ⑂ Hoàn tất {card.repos.filter((r) => !r.shipped).length} repo
+              <GitMerge /> Hoàn tất {card.repos.filter((r) => !r.shipped).length} repo
             </button>
           ) : prFlow ? (
             <button className="m-btn big primary" disabled={busy} onClick={mergePr}>
-              ⑂ Merge PR
+              <GitMerge /> Merge PR
             </button>
           ) : project.git.flow === 'push' ? (
             <button
@@ -332,7 +333,7 @@ function Review({
                 run(() => api.finish(card.id, 'merge_push', card.title), `Đã merge và push lên ${base}.`)
               }
             >
-              ⑂ Merge &amp; push
+              <GitMerge /> Merge &amp; push
             </button>
           ) : (
             <button
@@ -342,7 +343,7 @@ function Review({
                 confirm(`Merge thay đổi vào nhánh gốc của dự án?`) && run(() => api.finish(card.id, 'merge', card.title), 'Đã merge.')
               }
             >
-              ⑂ Merge
+              <GitMerge /> Merge
             </button>
           )}
         </div>
@@ -446,7 +447,7 @@ function PreviewBlock({ card, toasts, autoStart }: { card: Card; toasts: ToastAp
           </a>
         ) : (
           <div className="m-shot-empty">
-            <span aria-hidden>🖼</span>
+            <ImageIcon aria-hidden />
             <span>
               {shooting
                 ? 'Đang chụp màn hình…'
@@ -465,7 +466,7 @@ function PreviewBlock({ card, toasts, autoStart }: { card: Card; toasts: ToastAp
       {running && preview.url ? (
         <>
           <a className="m-btn big" href={preview.url} target="_blank" rel="noreferrer">
-            ↗ Mở và thử trên điện thoại
+            <ExternalLink /> Mở và thử trên điện thoại
           </a>
           <div className="m-cred">
             <span>
@@ -494,18 +495,30 @@ function PreviewBlock({ card, toasts, autoStart }: { card: Card; toasts: ToastAp
         </button>
       ) : (
         <button className="m-btn big" disabled={busyStarting} onClick={start}>
-          {busyStarting ? 'Đang chuẩn bị…' : '▶ Chạy xem trước'}
+          {busyStarting ? (
+            'Đang chuẩn bị…'
+          ) : (
+            <>
+              <Play /> Chạy xem trước
+            </>
+          )}
         </button>
       )}
       <div className="m-row m-row-links">
         {running && (
           <button className="m-link" disabled={shooting} onClick={shoot}>
-            {shooting ? 'Đang chụp…' : '📸 Chụp lại'}
+            {shooting ? (
+              'Đang chụp…'
+            ) : (
+              <>
+                <Camera /> Chụp lại
+              </>
+            )}
           </button>
         )}
         {running && (
           <button className="m-link" onClick={() => api.previewStop(card.id).catch((e) => toasts.error(e.message))}>
-            ■ Dừng xem trước
+            <CircleStop /> Dừng xem trước
           </button>
         )}
       </div>
@@ -534,7 +547,7 @@ function RequestChanges({
         <div className="m-sheet-head">
           <strong>Yêu cầu sửa</strong>
           <button className="m-icon-btn" onClick={onClose} aria-label="Đóng">
-            ✕
+            <X />
           </button>
         </div>
         <textarea

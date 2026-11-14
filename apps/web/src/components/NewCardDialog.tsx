@@ -82,7 +82,7 @@ export function NewCardDialog({
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Làm gì, ở đâu, ràng buộc nào, kiểm tra thế nào là xong… Có thể bấm 🎤 Nói để đọc."
+            placeholder="Làm gì, ở đâu, ràng buộc nào, kiểm tra thế nào là xong… Có thể bấm nút Nói để đọc."
             rows={7}
           />
           {interim && <p className="interim">{interim}</p>}

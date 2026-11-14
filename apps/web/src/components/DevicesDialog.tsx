@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Check, X } from 'lucide-react';
 import type { Device } from '@localkan/protocol';
 import { AGENT_LABELS, AGENTS } from '@localkan/protocol';
 import { api } from '../api.ts';
@@ -52,7 +53,7 @@ export function DevicesDialog({
                 </span>
                 {AGENTS.map((a) => (
                   <span key={a} className={d.info?.agents[a] ? 'ok-text' : 'muted'}>
-                    {AGENT_LABELS[a]} {d.info?.agents[a] ? '✓' : '✗'}
+                    {AGENT_LABELS[a]} {d.info?.agents[a] ? <Check /> : <X />}
                   </span>
                 ))}
               </div>

@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
+import { MessageSquare } from 'lucide-react';
 import type { DiffResult, ReviewComment } from '@localkan/protocol';
 
 interface DiffLine {
@@ -117,7 +118,7 @@ export function DiffView({
                         <td colSpan={2} />
                         <td>
                           <div className="comment">
-                            💬 {c.text}
+                            <MessageSquare /> {c.text}
                             <button className="btn ghost small" onClick={() => onRemoveComment(ci)}>
                               Xóa
                             </button>

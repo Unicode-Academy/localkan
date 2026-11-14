@@ -1,15 +1,27 @@
 import { useEffect, useState } from 'react';
+import { Check, CircleCheck, CircleX, Clock, RefreshCw, type LucideIcon } from 'lucide-react';
 import type { Card, PrInfo, Project } from '@localkan/protocol';
 import { api } from '../api.ts';
 import type { ToastApi } from './Toasts.tsx';
 
 /** One-line CI verdict of a PR, for tags and headers. */
-export function ciSummary(pr: PrInfo): { label: string; tone: 'ok' | 'danger' | 'info' | 'muted' } {
+export function ciSummary(pr: PrInfo): { label: string; tone: 'ok' | 'danger' | 'info' | 'muted'; Icon: LucideIcon | null } {
   const c = pr.checks;
-  if (c.total === 0) return { label: 'chưa có CI', tone: 'muted' };
-  if (c.failed > 0) return { label: `✗ CI lỗi ${c.failed}/${c.total}`, tone: 'danger' };
-  if (c.pending > 0) return { label: `⏳ CI ${c.passed}/${c.total}`, tone: 'info' };
-  return { label: `✓ CI ${c.passed}/${c.total}`, tone: 'ok' };
+  if (c.total === 0) return { label: 'chưa có CI', tone: 'muted', Icon: null };
+  if (c.failed > 0) return { label: `CI lỗi ${c.failed}/${c.total}`, tone: 'danger', Icon: CircleX };
+  if (c.pending > 0) return { label: `CI ${c.passed}/${c.total}`, tone: 'info', Icon: Clock };
+  return { label: `CI ${c.passed}/${c.total}`, tone: 'ok', Icon: CircleCheck };
+}
+
+/** The CI verdict with its icon; `short` shows the icon alone (nothing when there is no CI). */
+export function CiLabel({ pr, short }: { pr: PrInfo; short?: boolean }) {
+  const { label, Icon } = ciSummary(pr);
+  if (short) return Icon ? <Icon aria-label={label} /> : null;
+  return (
+    <>
+      {Icon && <Icon aria-hidden />} {label}
+    </>
+  );
 }
 
 /** The task's GitHub pull request: link, draft state, CI checks and conflicts. */
@@ -75,7 +87,7 @@ export function PrPanel({ card, project, toasts }: { card: Card; project: Projec
         <div className="pr-head">
           <strong>Pull Request</strong>
           <button className="btn ghost small" disabled={!!busy} onClick={() => refresh()} title="Kiểm tra lại trên GitHub">
-            ↻
+            <RefreshCw />
           </button>
         </div>
         <p className="muted small">
@@ -99,10 +111,12 @@ export function PrPanel({ card, project, toasts }: { card: Card; project: Projec
         {pr.draft && <span className="tag">Nháp</span>}
         {pr.state !== 'open' && <span className="tag">{pr.state === 'merged' ? 'Đã merge' : 'Đã đóng'}</span>}
         <span className="muted small">→ {pr.base}</span>
-        <span className={`pr-ci ${ci.tone}`}>{ci.label}</span>
+        <span className={`pr-ci ${ci.tone}`}>
+          <CiLabel pr={pr} />
+        </span>
         <div className="spacer" />
         <button className="btn ghost small" disabled={!!busy} onClick={() => refresh()} title="Kiểm tra lại trên GitHub">
-          {busy === 'refresh' ? '…' : '↻'}
+          {busy === 'refresh' ? '…' : <RefreshCw />}
         </button>
       </div>
       {pr.checks.failing.length > 0 && (
@@ -139,9 +153,9 @@ export function PrPanel({ card, project, toasts }: { card: Card; project: Projec
 
 const FLOW_LABEL: Record<string, string> = { pr: 'PR', push: 'merge rồi push', local: 'merge cục bộ' };
 const SHIPPED_LABEL: Record<string, string> = {
-  merged: '✓ đã merge',
-  pushed: '✓ đã merge và push',
-  local: '✓ đã merge trên máy',
+  merged: 'đã merge',
+  pushed: 'đã merge và push',
+  local: 'đã merge trên máy',
   skipped: 'không có thay đổi',
 };
 
@@ -170,7 +184,7 @@ export function ReposPanel({ card, toasts }: { card: Card; toasts: ToastApi }) {
         {card.status !== 'done' && (
           <>
             <button className="btn ghost small" disabled={!!busy} onClick={() => act('refresh', () => api.prRefresh(card.id))} title="Kiểm tra PR trên GitHub">
-              {busy === 'refresh' ? '…' : '↻'}
+              {busy === 'refresh' ? '…' : <RefreshCw />}
             </button>
             <button
               className="btn ghost small"
@@ -190,7 +204,6 @@ export function ReposPanel({ card, toasts }: { card: Card; toasts: ToastApi }) {
       </div>
       <ul className="repo-list">
         {card.repos.map((r) => {
-          const ci = r.pr ? ciSummary(r.pr) : null;
           return (
             <li key={r.name}>
               <div className="repo-line">
@@ -206,9 +219,17 @@ export function ReposPanel({ card, toasts }: { card: Card; toasts: ToastApi }) {
                     {r.pr.draft && r.pr.state === 'open' ? ' (nháp)' : ''}
                   </a>
                 )}
-                {r.pr && r.pr.state === 'open' && ci && <span className={`pr-ci ${ci.tone}`}>{ci.label}</span>}
+                {r.pr && r.pr.state === 'open' && (
+                  <span className={`pr-ci ${ciSummary(r.pr).tone}`}>
+                    <CiLabel pr={r.pr} />
+                  </span>
+                )}
                 {r.pr && r.pr.state === 'open' && r.pr.mergeable === 'conflicting' && <span className="pr-ci danger">xung đột</span>}
-                {r.shipped && <span className={`pr-ci ${r.shipped === 'skipped' ? 'muted' : 'ok'}`}>{SHIPPED_LABEL[r.shipped]}</span>}
+                {r.shipped && (
+                  <span className={`pr-ci ${r.shipped === 'skipped' ? 'muted' : 'ok'}`}>
+                    {r.shipped !== 'skipped' && <Check aria-hidden />} {SHIPPED_LABEL[r.shipped]}
+                  </span>
+                )}
                 {!r.pr && !r.shipped && r.flow === 'pr' && <span className="muted small">chưa có PR</span>}
               </div>
               {r.pr && r.pr.state === 'open' && r.pr.checks.failing.length > 0 && (

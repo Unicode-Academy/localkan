@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
+import { ImagePlus, X } from 'lucide-react';
 import { ATTACHMENT_LIMITS, type Attachment } from '@localkan/protocol';
 import { api } from '../api.ts';
 
@@ -96,7 +97,7 @@ export function ImageAttachments({
               </a>
               {onRemoveExisting && !disabled && (
                 <button type="button" className="thumb-x" onClick={() => onRemoveExisting(a)} aria-label={`Xóa ${a.name}`}>
-                  ✕
+                  <X />
                 </button>
               )}
             </figure>
@@ -106,7 +107,7 @@ export function ImageAttachments({
               <img src={previews[i]} alt={f.name} />
               {onRemovePending && !disabled && (
                 <button type="button" className="thumb-x" onClick={() => onRemovePending(i)} aria-label={`Bỏ ${f.name}`}>
-                  ✕
+                  <X />
                 </button>
               )}
             </figure>
@@ -116,7 +117,7 @@ export function ImageAttachments({
       {onAdd && !disabled && total < ATTACHMENT_LIMITS.maxFiles && (
         <div className="images-add">
           <button type="button" className="btn ghost small" onClick={() => input.current?.click()}>
-            🖼 Thêm ảnh
+            <ImagePlus /> Thêm ảnh
           </button>
           <span className="muted small">
             <span className="pointer-only">hoặc kéo thả, hoặc dán (⌘V) ảnh chụp màn hình · </span>tối đa {ATTACHMENT_LIMITS.maxFiles} ảnh

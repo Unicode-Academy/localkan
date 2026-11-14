@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Camera, CircleStop, Play } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { Card, PreviewInfo, Project, Screenshot } from '@localkan/protocol';
 import { api } from '../api.ts';
@@ -181,7 +182,7 @@ function PreviewPanel({
                 xa (ngrok, có mật khẩu)
               </label>
               <button className="btn primary" onClick={start} disabled={starting}>
-                ▶ Chạy xem trước
+                <Play /> Chạy xem trước
               </button>
             </>
           )}
@@ -192,7 +193,7 @@ function PreviewPanel({
           )}
           {running && (
             <button className="btn" onClick={stop} disabled={busy}>
-              ■ Dừng
+              <CircleStop /> Dừng
             </button>
           )}
         </div>
@@ -210,7 +211,13 @@ function PreviewPanel({
         >
           <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/ hoặc /login" aria-label="Đường dẫn cần chụp" />
           <button className="btn primary" disabled={shooting}>
-            {shooting ? 'Đang chụp…' : '📸 Chụp'}
+            {shooting ? (
+              'Đang chụp…'
+            ) : (
+              <>
+                <Camera /> Chụp
+              </>
+            )}
           </button>
         </form>
         {shots.length > 0 && (

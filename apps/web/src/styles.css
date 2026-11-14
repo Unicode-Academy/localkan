@@ -269,6 +269,39 @@ label {
   gap: 6px;
   align-items: center;
 }
+/* Icons (lucide-react): sized and aligned by the text around them. */
+.lucide {
+  width: 1.15em;
+  height: 1.15em;
+  flex-shrink: 0;
+  vertical-align: -0.2em;
+}
+.brand-mark .lucide {
+  width: 17px;
+  height: 17px;
+}
+.voice-mic .lucide {
+  width: 28px;
+  height: 28px;
+  vertical-align: middle;
+}
+.m-badge.info .lucide-loader-circle {
+  animation: spin 1.4s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .m-badge.info .lucide-loader-circle {
+    animation: none;
+  }
+}
+.tab-dot {
+  margin-left: 6px;
+  vertical-align: middle;
+}
 .dot {
   width: 8px;
   height: 8px;
@@ -430,12 +463,17 @@ label {
 }
 .tile-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
 .agent,
 .tag,
 .run {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
   font-size: 11.5px;
   font-weight: 600;
   padding: 1px 7px;
@@ -1920,8 +1958,9 @@ label {
   color: var(--muted);
   font-size: 13.5px;
 }
-.m-shot-empty span:first-child {
-  font-size: 28px;
+.m-shot-empty > .lucide {
+  width: 32px;
+  height: 32px;
 }
 .m-url {
   font-size: 12.5px;
@@ -2095,6 +2134,10 @@ label {
   font-weight: 700;
 }
 .pr-ci {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
   font-size: 12.5px;
   font-weight: 600;
   padding: 2px 8px;

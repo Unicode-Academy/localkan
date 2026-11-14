@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SendHorizontal, X } from 'lucide-react';
 import { AGENT_LABELS, AGENTS, type AgentId, type Card, type Project } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { ImageAttachments } from '../components/ImageAttachments.tsx';
@@ -106,7 +107,7 @@ export function NewTask({
     <div className="m-screen">
       <header className="m-bar">
         <button className="m-icon-btn" onClick={onClose} aria-label="Đóng">
-          ✕
+          <X />
         </button>
         <h1>Việc mới</h1>
         <span className="m-icon-btn ghost" aria-hidden />
@@ -197,7 +198,13 @@ export function NewTask({
 
       <div className="m-bottom">
         <button className="m-cta" onClick={send} disabled={busy || !prompt.trim() || !project}>
-          {busy ? 'Đang gửi…' : `➤ Gửi cho ${AGENT_LABELS[agent]}`}
+          {busy ? (
+            'Đang gửi…'
+          ) : (
+            <>
+              <SendHorizontal aria-hidden /> Gửi cho {AGENT_LABELS[agent]}
+            </>
+          )}
         </button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Mic, MicOff, Square } from 'lucide-react';
 
 // Minimal typing for the Web Speech API (not in TypeScript's DOM lib).
 interface SpeechResultList {
@@ -115,7 +116,7 @@ export function VoiceButton({
   if (!Ctor) {
     return (
       <span className="muted small" title="Dùng Chrome, Edge hoặc Safari để nhập bằng giọng nói">
-        🎤 Trình duyệt này chưa hỗ trợ giọng nói
+        <MicOff /> Trình duyệt này chưa hỗ trợ giọng nói
       </span>
     );
   }
@@ -146,7 +147,7 @@ export function VoiceButton({
           aria-pressed={listening}
           aria-label={listening ? 'Dừng nghe' : 'Nói yêu cầu'}
         >
-          {listening ? '■' : '🎤'}
+          {listening ? <Square fill="currentColor" /> : <Mic />}
         </button>
         <div className="voice-caption">
           <span>{listening ? 'Đang nghe… bấm lần nữa để dừng' : 'Bấm để nói, tự chuyển thành chữ'}</span>
@@ -165,7 +166,15 @@ export function VoiceButton({
         aria-pressed={listening}
         title={listening ? 'Bấm để dừng' : 'Nói để điền mô tả'}
       >
-        {listening ? '■ Đang nghe…' : '🎤 Nói'}
+        {listening ? (
+          <>
+            <Square fill="currentColor" /> Đang nghe…
+          </>
+        ) : (
+          <>
+            <Mic /> Nói
+          </>
+        )}
       </button>
       {langSelect}
     </div>

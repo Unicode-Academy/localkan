@@ -1,4 +1,5 @@
 import { useState, type DragEvent } from 'react';
+import { CirclePause, CornerDownRight, Eye, Image, KeyRound } from 'lucide-react';
 import {
   AGENT_LABELS,
   type Card,
@@ -12,7 +13,7 @@ import { api } from '../api.ts';
 import { NewCardDialog } from './NewCardDialog.tsx';
 import { RunBadge } from './RunBadge.tsx';
 import type { ToastApi } from './Toasts.tsx';
-import { ciSummary } from './PrPanel.tsx';
+import { CiLabel, ciSummary } from './PrPanel.tsx';
 
 const COLUMN_HINTS: Record<CardStatus, string> = {
   todo: 'Kéo sang In Progress để giao cho agent',
@@ -150,10 +151,18 @@ function CardTile({
       tabIndex={0}
     >
       <div className="tile-title">{card.title}</div>
-      {parentTitle && <div className="tile-parent">↳ tiếp từ: {parentTitle}</div>}
+      {parentTitle && <div className="tile-parent"><CornerDownRight /> tiếp từ: {parentTitle}</div>}
       {card.waiting && (
         <div className="tile-waiting">
-          {card.waiting.kind === 'login' ? '🔑 Cần đăng nhập · ' : '⏸ '}
+          {card.waiting.kind === 'login' ? (
+            <>
+              <KeyRound /> Cần đăng nhập ·{' '}
+            </>
+          ) : (
+            <>
+              <CirclePause />{' '}
+            </>
+          )}
           {card.waiting.text.split('\n')[0].slice(0, 90)}
         </div>
       )}
@@ -168,13 +177,15 @@ function CardTile({
         )}
         {card.pr && card.pr.state === 'open' && (
           <span className={`tag pr-ci ${ciSummary(card.pr).tone}`} title={`PR #${card.pr.number}${card.pr.draft ? ' (nháp)' : ''}`}>
-            PR #{card.pr.number} {ciSummary(card.pr).label.split(' ')[0]}
+            PR #{card.pr.number} <CiLabel pr={card.pr} short />
           </span>
         )}
-        {card.attachments.length > 0 && <span className="tag" title="Ảnh đính kèm">🖼 {card.attachments.length}</span>}
+        {card.attachments.length > 0 && <span className="tag" title="Ảnh đính kèm">
+            <Image /> {card.attachments.length}
+          </span>}
         {card.preview?.status === 'running' && (
           <span className="tag preview-tag" title={card.preview.url ? 'Đang xem trước, có link từ xa' : 'Đang xem trước trên máy'}>
-            👁 {card.preview.url ? 'link' : 'local'}
+            <Eye /> {card.preview.url ? 'link' : 'local'}
           </span>
         )}
         <div className="spacer" />

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
+import { ArrowDown, ArrowLeft, ArrowUp, Camera, Delete, RefreshCw, X } from 'lucide-react';
 import type { BrowserAction, BrowserResult, BrowserShot, BrowserTab, Card, Project } from '@localkan/protocol';
 import { api } from '../api.ts';
 import type { ToastApi } from './Toasts.tsx';
@@ -165,17 +166,17 @@ export function RemoteBrowser({
             }}
             title="Đóng tab này"
           >
-            ✕ Đóng tab
+            <X /> Đóng tab
           </button>
         )}
       </div>
 
       <form className="row rb-toolbar" onSubmit={(e) => go(e, false)}>
         <button type="button" className="btn ghost small" disabled={!pageId || !!busy} onClick={() => pageId && act({ kind: 'back', pageId }, 'Đang quay lại…')} aria-label="Quay lại">
-          ←
+          <ArrowLeft />
         </button>
         <button type="button" className="btn ghost small" disabled={!pageId || !!busy} onClick={() => pageId && act({ kind: 'reload', pageId }, 'Đang tải lại…')} aria-label="Tải lại trang" title="Tải lại trang">
-          ↻
+          <RefreshCw />
         </button>
         <input
           value={url}
@@ -225,19 +226,19 @@ export function RemoteBrowser({
           Tab
         </button>
         <button className="btn ghost small" disabled={!pageId || !!busy} onClick={() => key('Backspace')} aria-label="Xóa lùi">
-          ⌫
+          <Delete />
         </button>
         <button className="btn ghost small" disabled={!pageId || !!busy} onClick={() => key('Escape')}>
           Esc
         </button>
         <button className="btn ghost small" disabled={!pageId || !!busy} onClick={() => pageId && act({ kind: 'scroll', pageId, dy: -500 }, 'Đang cuộn…')}>
-          ↑ Cuộn
+          <ArrowUp /> Cuộn
         </button>
         <button className="btn ghost small" disabled={!pageId || !!busy} onClick={() => pageId && act({ kind: 'scroll', pageId, dy: 500 }, 'Đang cuộn…')}>
-          ↓ Cuộn
+          <ArrowDown /> Cuộn
         </button>
         <button className="btn ghost small" disabled={!pageId || !!busy} onClick={() => pageId && act({ kind: 'shot', pageId }, 'Đang chụp…')}>
-          📷 Ảnh mới
+          <Camera /> Ảnh mới
         </button>
         <label className="check small">
           <input type="checkbox" checked={zoom} onChange={(e) => setZoom(e.target.checked)} /> Phóng to

@@ -1,4 +1,5 @@
 import type { Card } from '@localkan/protocol';
+import { Circle, CircleAlert, CircleCheck, CircleStop, Eye, KeyRound, LoaderCircle, MessageCircleQuestion, Settings, TriangleAlert, type LucideIcon } from 'lucide-react';
 
 /** Where a card sits from the phone's point of view. */
 export type Bucket = 'you' | 'running' | 'failed' | 'todo' | 'done';
@@ -21,30 +22,30 @@ export function byUrgency(a: Card, b: Card): number {
   return ORDER[bucket(a)] - ORDER[bucket(b)] || b.updatedAt.localeCompare(a.updatedAt);
 }
 
-export function badge(c: Card): { label: string; tone: Tone; icon: string } {
+export function badge(c: Card): { label: string; tone: Tone; Icon: LucideIcon } {
   switch (c.status) {
     case 'todo':
-      return { label: 'Chưa giao', tone: 'muted', icon: '○' };
+      return { label: 'Chưa giao', tone: 'muted', Icon: Circle };
     case 'done':
-      return { label: 'Đã xong', tone: 'ok', icon: '✓' };
+      return { label: 'Đã xong', tone: 'ok', Icon: CircleCheck };
     case 'in_progress':
-      return { label: c.runState === 'starting' ? 'Đang khởi động' : 'Đang chạy', tone: 'info', icon: '●' };
+      return { label: c.runState === 'starting' ? 'Đang khởi động' : 'Đang chạy', tone: 'info', Icon: LoaderCircle };
     case 'needs_input':
       switch (c.waiting?.kind) {
         case 'login':
-          return { label: 'Cần đăng nhập', tone: 'warn', icon: '🔑' };
+          return { label: 'Cần đăng nhập', tone: 'warn', Icon: KeyRound };
         case 'question':
-          return { label: 'Cần trả lời', tone: 'warn', icon: '?' };
+          return { label: 'Cần trả lời', tone: 'warn', Icon: MessageCircleQuestion };
         case 'setup':
-          return { label: 'Cần thiết lập', tone: 'warn', icon: '⚙' };
+          return { label: 'Cần thiết lập', tone: 'warn', Icon: Settings };
         default:
-          return { label: 'Cần xác nhận', tone: 'warn', icon: '!' };
+          return { label: 'Cần xác nhận', tone: 'warn', Icon: CircleAlert };
       }
     case 'review':
-      if (c.runState === 'failed') return { label: 'Lỗi', tone: 'danger', icon: '⚠' };
-      if (c.runState === 'stopped') return { label: 'Đã dừng', tone: 'danger', icon: '■' };
-      if (c.runState === 'running' || c.runState === 'starting') return { label: 'Đang chạy', tone: 'info', icon: '●' };
-      return { label: 'Cần review', tone: 'warn', icon: '👁' };
+      if (c.runState === 'failed') return { label: 'Lỗi', tone: 'danger', Icon: TriangleAlert };
+      if (c.runState === 'stopped') return { label: 'Đã dừng', tone: 'danger', Icon: CircleStop };
+      if (c.runState === 'running' || c.runState === 'starting') return { label: 'Đang chạy', tone: 'info', Icon: LoaderCircle };
+      return { label: 'Cần review', tone: 'warn', Icon: Eye };
   }
 }
 

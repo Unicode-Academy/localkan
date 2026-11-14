@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowDown, ArrowUp, Check, CircleStop, CornerDownRight, ExternalLink, Play, RefreshCw, RotateCcw, X } from 'lucide-react';
 import {
   AGENT_LABELS,
   AGENTS,
@@ -97,13 +98,13 @@ export function CardPanel({
             {card.branch && <code>{card.branch}</code>}
             {card.prUrl && (
               <a href={card.prUrl} target="_blank" rel="noreferrer">
-                Pull Request ↗
+                Pull Request <ExternalLink />
               </a>
             )}
           </div>
         </div>
         <button className="btn ghost icon" onClick={onClose} aria-label="Đóng">
-          ✕
+          <X />
         </button>
       </div>
 
@@ -120,7 +121,7 @@ export function CardPanel({
         {card.status === 'todo' && (
           <>
             <button className="btn primary" disabled={busy || project.status !== 'ready'} onClick={() => run(() => api.start(card.id))}>
-              ▶ Giao cho agent
+              <Play /> Giao cho agent
             </button>
             <button
               className="btn ghost danger"
@@ -138,12 +139,12 @@ export function CardPanel({
             title="Giao lại nhiệm vụ ban đầu cho agent mới trong cùng worktree (giữ các thay đổi đã có)"
             onClick={() => run(() => api.retry(card.id))}
           >
-            ↻ Chạy lại từ đầu
+            <RotateCcw /> Chạy lại từ đầu
           </button>
         )}
         {(card.status === 'in_progress' || card.status === 'needs_input') && (
           <button className="btn" disabled={busy} onClick={() => confirm('Dừng agent của thẻ này?') && run(() => api.stop(card.id), 'Đã dừng agent.')}>
-            ■ Dừng
+            <CircleStop /> Dừng
           </button>
         )}
         {(card.status === 'done' ||
@@ -176,7 +177,7 @@ export function CardPanel({
             title={card.status === 'done' && (t === 'preview' || t === 'terminal') ? 'Việc đã xong: worktree và terminal đã được dọn' : undefined}
           >
             {{ task: 'Nhiệm vụ', log: 'Log', diff: 'Diff', preview: 'Xem trước', terminal: 'Terminal' }[t]}
-            {t === 'preview' && card.preview?.status === 'running' && ' ●'}
+            {t === 'preview' && card.preview?.status === 'running' && <span className="dot ok tab-dot" aria-label="đang chạy" />}
           </button>
         ))}
       </nav>
@@ -237,7 +238,7 @@ export function WaitingBox({
               )
             }
           >
-            ✓ Đã đăng nhập, cho agent làm tiếp
+            <Check /> Đã đăng nhập, cho agent làm tiếp
           </button>
         </div>
         <details>
@@ -319,10 +320,10 @@ function KeyButtons({ card, busy, run }: { card: Card; busy: boolean; run: Run }
   return (
     <>
       <button className="btn ghost small" disabled={busy} onClick={() => send(['up'])} aria-label="Mũi tên lên">
-        ↑
+        <ArrowUp />
       </button>
       <button className="btn ghost small" disabled={busy} onClick={() => send(['down'])} aria-label="Mũi tên xuống">
-        ↓
+        <ArrowDown />
       </button>
       <button className="btn ghost small" disabled={busy} onClick={() => send(['tab'])}>
         Tab
@@ -368,7 +369,7 @@ function TaskTab({ card, cards, toasts }: { card: Card; cards: Card[]; toasts: T
       <div className="task-view">
         {parent && (
           <p className="muted small">
-            ↳ Làm tiếp từ thẻ <strong>{parent.title}</strong>
+            <CornerDownRight /> Làm tiếp từ thẻ <strong>{parent.title}</strong>
           </p>
         )}
         <pre className="prompt">{card.prompt || '(không có mô tả)'}</pre>
@@ -492,7 +493,7 @@ function ReviewTab({ card, project, busy, run, toasts }: { card: Card; project: 
       {prFlow && card.status !== 'done' && <PrPanel card={card} project={project} toasts={toasts} />}
       <div className="row">
         <button className="btn ghost small" onClick={load}>
-          ↻ Tải lại diff
+          <RefreshCw /> Tải lại diff
         </button>
         {diff && (
           <span className="muted small">
@@ -644,7 +645,7 @@ function TerminalTab({ card, busy, run }: { card: Card; busy: boolean; run: Run 
     <div className="terminal-tab">
       <div className="row">
         <button className="btn ghost small" onClick={load}>
-          ↻ Làm mới
+          <RefreshCw /> Làm mới
         </button>
         <label className="check">
           <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Tự làm mới

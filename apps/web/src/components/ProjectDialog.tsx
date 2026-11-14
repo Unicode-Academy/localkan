@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Check } from 'lucide-react';
 import type { Device, FolderInfo, Project } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { Dialog } from './Dialog.tsx';
@@ -10,12 +11,12 @@ function folderName(path: string): string {
 
 function FolderStatus({ info }: { info: FolderInfo }) {
   if (!info.exists) return <p className="folder-status new">Thư mục chưa có: Localkan sẽ tạo mới và git init.</p>;
-  if (info.isGitRepo) return <p className="folder-status ok">✓ Repo git</p>;
+  if (info.isGitRepo) return <p className="folder-status ok"><Check /> Repo git</p>;
   if (info.isEmpty) return <p className="folder-status new">Thư mục trống: Localkan sẽ tự git init và tạo commit đầu tiên.</p>;
   if (info.childRepos?.length) {
     return (
       <p className="folder-status ok">
-        ✓ Bảng nhiều repo: {info.childRepos.map((r) => `${r}/`).join(', ')}. Mỗi việc có worktree của từng repo trong cùng một thư
+        <Check /> Bảng nhiều repo: {info.childRepos.map((r) => `${r}/`).join(', ')}. Mỗi việc có worktree của từng repo trong cùng một thư
         mục; thư mục này không cần git init.
       </p>
     );

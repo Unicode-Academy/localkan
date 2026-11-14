@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Bell, BellOff, ChevronLeft, Eye, GitBranch, Globe, Kanban, LogOut, X } from 'lucide-react';
 import type { Card, Device, LogLine, Project } from '@localkan/protocol';
 import { CardPanel } from '../components/CardPanel.tsx';
 import { Dialog } from '../components/Dialog.tsx';
@@ -112,7 +113,7 @@ export function MobileApp({
         <div className="m-screen">
           <header className="m-bar">
             <button className="m-icon-btn" onClick={back} aria-label="Quay lại">
-              ←
+              <ChevronLeft />
             </button>
             <h1>Việc</h1>
             <span className="m-icon-btn ghost" aria-hidden />
@@ -141,7 +142,7 @@ export function MobileApp({
             <div className="m-sheet-head">
               <strong>Localkan</strong>
               <button className="m-icon-btn" onClick={() => setMenu(false)} aria-label="Đóng">
-                ✕
+                <X />
               </button>
             </div>
             <p className="muted small">
@@ -157,26 +158,34 @@ export function MobileApp({
                 <strong>{p.name}</strong>
                 <div className="m-row">
                   <button className="m-btn small" onClick={() => (setMenu(false), setTool({ kind: 'browser', projectId: p.id }))}>
-                    🌐 Trình duyệt
+                    <Globe /> Trình duyệt
                   </button>
                   <button className="m-btn small" onClick={() => (setMenu(false), setTool({ kind: 'preview', projectId: p.id }))}>
-                    👁 Xem trước {p.baseRef ?? 'main'}
-                    {p.preview?.status === 'running' && ' ●'}
+                    <Eye /> Xem trước {p.baseRef ?? 'main'}
+                    {p.preview?.status === 'running' && <span className="dot ok" aria-label="đang chạy" />}
                   </button>
                   <button className="m-btn small" onClick={() => (setMenu(false), setTool({ kind: 'git', projectId: p.id }))}>
-                    ⑂ {p.git.flow === 'pr' ? `PR → ${p.git.baseBranch ?? p.baseRef ?? 'main'}` : p.git.flow === 'push' ? `Push → ${p.git.baseBranch ?? p.baseRef ?? 'main'}` : 'Git'}
+                    <GitBranch /> {p.git.flow === 'pr' ? `PR → ${p.git.baseBranch ?? p.baseRef ?? 'main'}` : p.git.flow === 'push' ? `Push → ${p.git.baseBranch ?? p.baseRef ?? 'main'}` : 'Git'}
                   </button>
                 </div>
               </div>
             ))}
             <button className="m-btn" onClick={() => (setMenu(false), onNotify())}>
-              {pushOn ? '🔔 Thông báo (đang bật)' : '🔕 Bật thông báo'}
+              {pushOn ? (
+                <>
+                  <Bell /> Thông báo (đang bật)
+                </>
+              ) : (
+                <>
+                  <BellOff /> Bật thông báo
+                </>
+              )}
             </button>
             <button className="m-btn" onClick={onBoardView}>
-              ▦ Chuyển sang dạng bảng Kanban
+              <Kanban /> Chuyển sang dạng bảng Kanban
             </button>
             <button className="m-btn danger" onClick={onLogout}>
-              Đăng xuất
+              <LogOut /> Đăng xuất
             </button>
           </div>
         </div>

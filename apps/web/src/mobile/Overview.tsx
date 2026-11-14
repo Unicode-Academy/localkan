@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
+import { Bell, BellOff, Check, CircleDot, ExternalLink, KeyRound, Menu, Mic, Play, RotateCcw } from 'lucide-react';
 import { AGENT_LABELS, type Card, type Device, type Project } from '@localkan/protocol';
 import { api } from '../api.ts';
-import { ciSummary } from '../components/PrPanel.tsx';
+import { CiLabel, ciSummary } from '../components/PrPanel.tsx';
 import type { ToastApi } from '../components/Toasts.tsx';
 import { badge, bucket, byUrgency, splitOptions, timeAgo, type Bucket } from './status.ts';
 
@@ -57,12 +58,12 @@ export function Overview({
             aria-label={pushOn ? 'Thông báo (đang bật)' : 'Bật thông báo'}
             title={pushOn ? 'Thông báo đang bật' : 'Bật thông báo khi việc xong'}
           >
-            <span aria-hidden>{pushOn === false ? '🔕' : '🔔'}</span>
+            {pushOn === false ? <BellOff aria-hidden /> : <Bell aria-hidden />}
             {pushOn === false && <span className="m-bell-dot" aria-hidden />}
           </button>
           <button className="m-icon-btn" onClick={onMenu} aria-label="Menu">
             <span className={`dot ${online && live ? 'ok' : 'off'}`} aria-hidden />
-            <span aria-hidden>☰</span>
+            <Menu aria-hidden />
           </button>
         </div>
       </header>
@@ -114,7 +115,7 @@ export function Overview({
 
       <div className="m-bottom">
         <button className="m-cta" onClick={() => go('#new')} disabled={!projects.length}>
-          <span aria-hidden>🎤</span> Việc mới
+          <Mic aria-hidden /> Việc mới
         </button>
       </div>
     </div>
@@ -151,27 +152,47 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
         <div className="m-card-top">
           <span className="m-card-project">{project?.name ?? 'Bảng'}</span>
           <span className={`m-badge ${b.tone}`}>
-            <span aria-hidden>{b.icon}</span> {b.label}
+            <b.Icon aria-hidden /> {b.label}
           </span>
         </div>
         <div className="m-card-title">{card.title}</div>
-        {kind === 'you' && card.status === 'review' && card.summary && <p className="m-card-ok">✓ {card.summary}</p>}
+        {kind === 'you' && card.status === 'review' && card.summary && <p className="m-card-ok">
+            <Check aria-hidden /> {card.summary}
+          </p>}
         {kind === 'failed' && card.error && <p className="m-card-err">{card.error.split('\n')[0]}</p>}
         {card.repos.length > 0 && (
           <p className="m-card-pr">
-            {card.repos
-              .map((r) => `${r.name}${r.pr && r.pr.state === 'open' ? ` PR #${r.pr.number} ${ciSummary(r.pr).label.split(' ')[0]}` : r.shipped && r.shipped !== 'skipped' ? ' ✓' : ''}`)
-              .join(' · ')}
+            {card.repos.map((r, i) => (
+              <span key={r.name}>
+                {i > 0 && ' · '}
+                {r.name}
+                {r.pr && r.pr.state === 'open' ? (
+                  <>
+                    {' '}
+                    PR #{r.pr.number} <CiLabel pr={r.pr} short />
+                  </>
+                ) : r.shipped && r.shipped !== 'skipped' ? (
+                  <>
+                    {' '}
+                    <Check aria-label="đã xong" />
+                  </>
+                ) : null}
+              </span>
+            ))}
           </p>
         )}
         {card.pr && card.pr.state === 'open' && (
           <p className={`m-card-pr ${ciSummary(card.pr).tone}`}>
             PR #{card.pr.number}
-            {card.pr.draft ? ' · nháp' : ''} · {ciSummary(card.pr).label}
+            {card.pr.draft ? ' · nháp' : ''} · <CiLabel pr={card.pr} />
             {card.pr.mergeable === 'conflicting' ? ' · xung đột' : ''}
           </p>
         )}
-        {card.preview?.status === 'running' && <p className="m-card-ok small">● Đang có bản xem trước{card.preview.url ? ' (mở được trên điện thoại)' : ''}</p>}
+        {card.preview?.status === 'running' && (
+          <p className="m-card-ok small">
+            <CircleDot aria-hidden /> Đang có bản xem trước{card.preview.url ? ' (mở được trên điện thoại)' : ''}
+          </p>
+        )}
         <div className="m-meta">
           {AGENT_LABELS[card.agent]}
           {card.branch && (
@@ -197,7 +218,7 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
         {card.status === 'review' && kind === 'you' && (
           <>
             <button className="m-btn" onClick={() => open('/preview')}>
-              ↗ Xem trước
+              <ExternalLink aria-hidden /> Xem trước
             </button>
             <button className="m-btn primary" onClick={() => open()}>
               Review
@@ -229,7 +250,7 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
         )}
         {w?.kind === 'login' && (
           <button className="m-btn primary" onClick={() => open()}>
-            🔑 Đăng nhập
+            <KeyRound aria-hidden /> Đăng nhập
           </button>
         )}
         {(w?.kind === 'prompt' || w?.kind === 'setup') && (
@@ -243,7 +264,7 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
               Xem log
             </button>
             <button className="m-btn primary" disabled={busy} onClick={() => run(() => api.retry(card.id), 'Đã giao lại cho agent.')}>
-              ↻ Chạy lại
+              <RotateCcw aria-hidden /> Chạy lại
             </button>
           </>
         )}
@@ -262,7 +283,7 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
               disabled={busy || project?.status !== 'ready'}
               onClick={() => run(() => api.start(card.id), 'Đã giao việc cho agent.')}
             >
-              ▶ Giao việc
+              <Play aria-hidden /> Giao việc
             </button>
           </>
         )}

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Kanban } from 'lucide-react';
 import { api } from '../api.ts';
 
 export function AuthScreen({ needsSetup, onDone }: { needsSetup: boolean; onDone: () => void }) {
@@ -27,7 +28,7 @@ export function AuthScreen({ needsSetup, onDone }: { needsSetup: boolean; onDone
       <form className="auth-card" onSubmit={submit}>
         <div className="brand big">
           <span className="brand-mark" aria-hidden>
-            ▦
+            <Kanban />
           </span>
           Localkan
         </div>

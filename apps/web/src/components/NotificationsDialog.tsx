@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Bell } from 'lucide-react';
 import { DEFAULT_NOTIFY_PREFS, type NotifyKind, type NotifyPrefs } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { currentSubscription, disablePush, enablePush, isIOS, pushSupport, savePrefs } from '../push.ts';
@@ -114,7 +115,7 @@ export function NotificationsDialog({ onClose, toasts }: { onClose: () => void; 
       {support.ok && !checking && !prefs && (
         <div className="row wrap">
           <button className="btn primary" disabled={busy} onClick={enable}>
-            🔔 Bật thông báo trên thiết bị này
+            <Bell /> Bật thông báo trên thiết bị này
           </button>
           {isIOS() && <span className="muted small">iPhone sẽ hỏi quyền gửi thông báo, chọn Cho phép.</span>}
         </div>
