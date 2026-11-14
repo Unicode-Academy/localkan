@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, BellOff, ChevronLeft, Eye, GitBranch, Globe, Kanban, LogOut, X } from 'lucide-react';
 import type { Card, Device, LogLine, Project } from '@localkan/protocol';
 import { CardPanel } from '../components/CardPanel.tsx';
+import { useScrollLock } from '../hooks.ts';
 import { Dialog } from '../components/Dialog.tsx';
 import { RemoteBrowser } from '../components/RemoteBrowser.tsx';
 import { GitSettingsDialog } from '../components/GitSettingsDialog.tsx';
@@ -48,6 +49,7 @@ export function MobileApp({
   const [menu, setMenu] = useState(false);
   const [full, setFull] = useState<string | null>(null);
   const [tool, setTool] = useState<{ kind: 'browser' | 'preview' | 'git'; projectId: string } | null>(null);
+  useScrollLock(menu);
 
   // Each screen starts at the top (the overview's scroll position must not carry over).
   useEffect(() => {

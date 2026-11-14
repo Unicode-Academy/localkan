@@ -11,6 +11,7 @@ import {
   type Screenshot,
 } from '@localkan/protocol';
 import { api } from '../api.ts';
+import { useScrollLock } from '../hooks.ts';
 import { FinishBox, LogTab, WaitingBox, type Run } from '../components/CardPanel.tsx';
 import { DiffView } from '../components/DiffView.tsx';
 import { ciSummary, PrPanel, ReposPanel, shipPlan } from '../components/PrPanel.tsx';
@@ -541,6 +542,7 @@ function RequestChanges({
 }) {
   const [text, setText] = useState('');
   const [interim, setInterim] = useState('');
+  useScrollLock();
   return (
     <div className="m-sheet-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="m-sheet" role="dialog" aria-modal="true" aria-label="Yêu cầu sửa">

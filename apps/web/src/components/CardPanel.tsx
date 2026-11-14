@@ -16,6 +16,7 @@ import {
   type TerminalKey,
 } from '@localkan/protocol';
 import { api } from '../api.ts';
+import { useNarrow, useScrollLock } from '../hooks.ts';
 import { DiffView } from './DiffView.tsx';
 import { ImageAttachments, imagesFromClipboard, acceptImages } from './ImageAttachments.tsx';
 import { ParentSelect } from './ParentSelect.tsx';
@@ -45,6 +46,9 @@ export function CardPanel({
   onClose: () => void;
   toasts: ToastApi;
 }) {
+  // On a phone the panel covers the screen: the board behind it must not scroll. On a desktop
+  // it is a side panel and the board stays usable.
+  useScrollLock(useNarrow());
   const defaultTab: Tab = card.status === 'todo' ? 'task' : card.status === 'review' ? 'diff' : 'log';
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [busy, setBusy] = useState(false);

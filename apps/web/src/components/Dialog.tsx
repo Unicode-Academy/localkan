@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { useScrollLock } from '../hooks.ts';
 
 export function Dialog({
   title,
@@ -12,6 +13,7 @@ export function Dialog({
   children: ReactNode;
   wide?: boolean;
 }) {
+  useScrollLock();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);

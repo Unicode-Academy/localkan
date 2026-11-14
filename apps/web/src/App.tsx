@@ -16,22 +16,10 @@ import { MobileApp } from './mobile/MobileApp.tsx';
 import { NotificationsDialog } from './components/NotificationsDialog.tsx';
 import { GitSettingsDialog } from './components/GitSettingsDialog.tsx';
 import { currentSubscription, pushSupport, syncPush } from './push.ts';
+import { useNarrow } from './hooks.ts';
 
 const LAST_PROJECT_KEY = 'localkan.lastProject';
 const VIEW_KEY = 'localkan.view';
-const NARROW = '(max-width: 760px)';
-
-/** True on phone-sized screens. */
-function useNarrow(): boolean {
-  const [narrow, setNarrow] = useState(() => typeof matchMedia === 'function' && matchMedia(NARROW).matches);
-  useEffect(() => {
-    const m = matchMedia(NARROW);
-    const on = () => setNarrow(m.matches);
-    m.addEventListener('change', on);
-    return () => m.removeEventListener('change', on);
-  }, []);
-  return narrow;
-}
 
 function readViewPref(): 'auto' | 'board' {
   try {
