@@ -395,6 +395,11 @@ export interface BridgeMethods {
     params: { projectId: string; repoPath: string };
     result: RepoInfo & { children?: { name: string; info: RepoInfo }[] };
   };
+  /** The board's own skills (`.localkan/skills/<name>/SKILL.md` in the project folder). */
+  'project.skills': {
+    params: { projectId: string; repoPath: string };
+    result: { dir: string; skills: { name: string; description: string }[] };
+  };
   /** Fetch the task's pull request and CI checks now (also done periodically). */
   'card.pr.refresh': { params: { cardId: string }; result: { pr: PrInfo | null } };
   /** Bring the task branch up to date with origin/<base> (merge) and push. */

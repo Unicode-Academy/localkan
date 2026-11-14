@@ -238,7 +238,15 @@ impl Engine {
 
         let images = self.fetch_attachments(&p.card_id, &root, &p.attachments).await;
         let ctx = context::compose_context(&project.repo_path, &p.card_id, p.parent.as_ref());
-        let prompt = with_layout(&p.prompt, &children);
+        let skill_names = crate::skills::prepare_multi(
+            &project.repo_path,
+            &root,
+            &children.iter().map(|c| (c.name.clone(), c.worktree.clone())).collect::<Vec<_>>(),
+        );
+        if !skill_names.is_empty() {
+            self.sys(&p.card_id, format!("Đã nạp skill: {}.", skill_names.join(", "))).await;
+        }
+        let prompt = format!("{}{}", with_layout(&p.prompt, &children), crate::skills::note(&skill_names));
         let spec = compose_spec(&p.title, &prompt, &p.mode, &images, &ctx);
         let me = self.clone();
         let card_id = p.card_id.clone();

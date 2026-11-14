@@ -18,6 +18,7 @@ pub mod preview;
 pub mod protocol;
 pub mod redact;
 pub mod runtime;
+pub mod skills;
 pub mod store;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

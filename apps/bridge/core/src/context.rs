@@ -14,8 +14,9 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 /// Paths under `.localkan/` that must never be committed.
-pub const EXCLUDES: [&str; 4] = [
+pub const EXCLUDES: [&str; 5] = [
     ".localkan/memory.md",
+    ".localkan/skills/",
     ".localkan/handoffs/",
     ".localkan/handoff.md",
     ".localkan/attachments/",

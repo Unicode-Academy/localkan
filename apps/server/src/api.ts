@@ -288,6 +288,12 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     return c.json({ ok: true });
   });
 
+  // Board skills live on the bridge machine (.localkan/skills/ in the project folder).
+  api.get('/projects/:id/skills', async (c) => {
+    const p = await ownProject(c, c.req.param('id'));
+    return c.json(await hub.request(p.deviceId, 'project.skills', { projectId: p.id, repoPath: p.repoPath }));
+  });
+
   // Git settings of a board: how finished work reaches the repo.
   api.get('/projects/:id/repo', async (c) => {
     const p = await ownProject(c, c.req.param('id'));

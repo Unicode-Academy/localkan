@@ -15,7 +15,8 @@ const PLACEHOLDER = `Ví dụ:
  * git-ignored .localkan/ folder; the server only relays them.
  */
 export function MemoryDialog({ project, onClose, toasts }: { project: Project; onClose: () => void; toasts: ToastApi }) {
-  const [tab, setTab] = useState<'memory' | 'handoffs'>('memory');
+  const [tab, setTab] = useState<'memory' | 'handoffs' | 'skills'>('memory');
+  const [skills, setSkills] = useState<{ dir: string; skills: { name: string; description: string }[] } | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [saved, setSaved] = useState('');
   const [path, setPath] = useState('');
@@ -37,6 +38,7 @@ export function MemoryDialog({ project, onClose, toasts }: { project: Project; o
       (h) => setNotes(h.handoffs),
       () => setNotes([]),
     );
+    api.skills(project.id).then(setSkills, () => setSkills({ dir: '', skills: [] }));
   }, [project.id]);
 
   const save = async () => {
@@ -62,6 +64,9 @@ export function MemoryDialog({ project, onClose, toasts }: { project: Project; o
         <button role="tab" aria-selected={tab === 'handoffs'} className={tab === 'handoffs' ? 'on' : ''} onClick={() => setTab('handoffs')}>
           Bàn giao {notes ? `(${notes.length})` : ''}
         </button>
+        <button role="tab" aria-selected={tab === 'skills'} className={tab === 'skills' ? 'on' : ''} onClick={() => setTab('skills')}>
+          Skill {skills ? `(${skills.skills.length})` : ''}
+        </button>
       </nav>
 
       {error && <p className="error-text">{error}</p>}
@@ -85,6 +90,31 @@ export function MemoryDialog({ project, onClose, toasts }: { project: Project; o
             </button>
             {content !== null && content !== saved && <span className="muted small">Chưa lưu</span>}
           </div>
+        </div>
+      )}
+
+      {tab === 'skills' && (
+        <div className="handoffs">
+          <p className="muted small">
+            Skill riêng của bảng, không cần commit vào repo. Mỗi khi giao việc, Localkan nạp chúng vào thư mục việc cho cả Claude
+            Code (<code>.claude/skills/</code>) và agy (<code>.agents/skills/</code>); git bỏ qua chúng.
+            {project.repos.length > 0 && ' Skill sẵn có trong từng repo con cũng được đưa lên thư mục việc để agent thấy ngay từ đầu.'}
+          </p>
+          <p className="small">
+            Thêm skill: tạo <code>{skills?.dir || '.localkan/skills'}/&lt;tên-skill&gt;/SKILL.md</code> trên máy chạy bridge, với phần
+            đầu có <code>name</code> và <code>description</code>. Việc giao sau đó sẽ dùng được; việc đang làm nhận skill mới khi bạn
+            gửi yêu cầu sửa.
+          </p>
+          {skills === null && <p className="muted">Đang tải…</p>}
+          {skills?.skills.length === 0 && <p className="muted">Bảng chưa có skill riêng.</p>}
+          {skills?.skills.map((s) => (
+            <article key={s.name} className="handoff">
+              <div className="handoff-head">
+                <strong>{s.name}</strong>
+                <span className="muted small">{s.description || 'chưa có mô tả (nên thêm description để agent biết khi nào dùng)'}</span>
+              </div>
+            </article>
+          ))}
         </div>
       )}
 

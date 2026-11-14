@@ -309,6 +309,17 @@ impl Engine {
                     None => Ok(json!(github::repo_info(&git::expand_path(&p.repo_path), true).await)),
                 }
             }
+            "project.skills" => {
+                let p: ProjectRef = serde_json::from_value(params).map_err(bad_params)?;
+                let dir = match self.project(&p.project_id).await {
+                    Some(pr) => pr.repo_path,
+                    None => git::expand_path(&p.repo_path),
+                };
+                Ok(json!({
+                    "dir": crate::skills::board_dir(&dir).to_string_lossy(),
+                    "skills": crate::skills::list(&dir),
+                }))
+            }
             "card.pr.refresh" => {
                 let p: CardRef = serde_json::from_value(params).map_err(bad_params)?;
                 self.pr_refresh(&p.card_id).await
@@ -682,7 +693,12 @@ impl Engine {
         if !ctx.is_empty() {
             self.sys(&p.card_id, "Đã đưa bộ nhớ dự án và ghi chú bàn giao vào nhiệm vụ.").await;
         }
-        let spec = compose_spec(&p.title, &p.prompt, &p.mode, &images, &ctx);
+        let skill_names = crate::skills::prepare_single(&project.repo_path, &path).await;
+        if !skill_names.is_empty() {
+            self.sys(&p.card_id, format!("Đã nạp skill của bảng: {}.", skill_names.join(", "))).await;
+        }
+        let prompt = format!("{}{}", p.prompt, crate::skills::note(&skill_names));
+        let spec = compose_spec(&p.title, &prompt, &p.mode, &images, &ctx);
         let me = self.clone();
         let card_id = p.card_id.clone();
         tokio::spawn(async move { me.dispatch(&card_id, spec, None, None).await });
@@ -1513,7 +1529,9 @@ impl Engine {
         let images = self.fetch_attachments(&card.card_id, &wt, &p.attachments).await;
         let repo = self.project(&card.project_id).await.map(|pr| pr.repo_path).unwrap_or_default();
         let ctx = if repo.is_empty() { String::new() } else { context::compose_context(&repo, &card.card_id, p.parent.as_ref()) };
+        let skill_names = self.prepare_skills(&card).await;
         let prompt = if card.children.is_empty() { p.prompt.clone() } else { multi::with_layout(&p.prompt, &card.children) };
+        let prompt = format!("{prompt}{}", crate::skills::note(&skill_names));
         let spec = compose_spec(&p.title, &prompt, &p.mode, &images, &ctx);
         let me = self.clone();
         let id = card.card_id.clone();
@@ -1538,6 +1556,8 @@ impl Engine {
             c.last_request = Some(p.text.clone());
         })
         .await;
+        // Skills added to the board since the task started become available too.
+        let _ = self.prepare_skills(&card).await;
         self.sys(&card.card_id, "Gửi yêu cầu sửa cho agent.").await;
         let mut patch = CardStatePatch::new(&card.card_id);
         patch.run_state = Some(RUN_STARTING.into());
@@ -2005,6 +2025,18 @@ impl Engine {
         patch.summary = Some(Some(summary));
         self.emit(patch).await;
         Ok(())
+    }
+
+    /// Link the board's skills (and the repos' own) into the task folder for both agents.
+    async fn prepare_skills(&self, card: &CardRt) -> Vec<String> {
+        let Some(project) = self.project(&card.project_id).await else { return Vec::new() };
+        let Some(root) = card.worktree_path.clone().filter(|w| Path::new(w).exists()) else { return Vec::new() };
+        if card.children.is_empty() {
+            crate::skills::prepare_single(&project.repo_path, &root).await
+        } else {
+            let children: Vec<(String, String)> = card.children.iter().map(|c| (c.name.clone(), c.worktree.clone())).collect();
+            crate::skills::prepare_multi(&project.repo_path, &root, &children)
+        }
     }
 
     /// Merge `branch` into `target` in the repo folder itself (it must be on `target` and clean).

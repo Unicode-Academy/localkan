@@ -88,6 +88,8 @@ export const api = {
   memory: (projectId: string) => call<{ content: string; path: string }>('GET', `/projects/${projectId}/memory`),
   saveMemory: (projectId: string, content: string) => call('PUT', `/projects/${projectId}/memory`, { content }),
   handoffs: (projectId: string) => call<{ handoffs: HandoffNote[] }>('GET', `/projects/${projectId}/handoffs`),
+  skills: (projectId: string) =>
+    call<{ dir: string; skills: { name: string; description: string }[] }>('GET', `/projects/${projectId}/skills`),
   deleteCard: (id: string) => call('DELETE', `/cards/${id}`),
   start: (id: string) => call<Card>('POST', `/cards/${id}/start`),
   retry: (id: string) => call<Card>('POST', `/cards/${id}/retry`),

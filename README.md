@@ -43,6 +43,22 @@ Khi giao việc, nhiệm vụ gửi cho agent có thêm:
 
 Khi chọn "Làm tiếp từ thẻ…" mà nhánh của thẻ đó chưa merge, worktree mới sẽ bắt đầu từ nhánh đó và diff chỉ hiện phần việc mới. Muốn chia sẻ ghi chú qua git thì bỏ các dòng `.localkan/...` trong `.git/info/exclude` rồi commit.
 
+## Skill cho agent
+
+| Loại | Đặt ở đâu | Ghi chú |
+| :-- | :-- | :-- |
+| **Toàn cục** | Claude Code: `~/.claude/skills/<tên>/SKILL.md` · agy: `~/.gemini/antigravity-cli/skills/<tên>/SKILL.md` | Áp dụng cho mọi việc, vì agent chạy trên máy bạn. |
+| **Trong repo** | Claude Code: `.claude/skills/` · agy: `.agents/skills/` | Phải commit, và push nếu bảng dùng PR hoặc Merge rồi push, vì worktree được tạo từ nhánh gốc trên origin. |
+| **Của bảng** | `<thư mục dự án>/.localkan/skills/<tên>/SKILL.md` | Không cần commit; git bỏ qua. Bảng nhiều repo đặt ở thư mục cha. |
+
+Mỗi khi giao việc (và khi chạy lại hoặc gửi yêu cầu sửa), Localkan liên kết **skill của bảng** vào thư mục việc ở cả `.claude/skills/` lẫn `.agents/skills/`, để Claude Code và agy cùng dùng được.
+- Skill sẵn có của repo trong một trong hai thư mục cũng được liên kết sang thư mục kia.
+- Với bảng nhiều repo, skill của từng repo con được đưa lên thư mục việc, nên agent thấy ngay từ đầu. Trùng tên thì thêm tiền tố tên repo, ví dụ `backend-review`.
+- Các liên kết được git bỏ qua, nên không lọt vào diff, commit hay PR.
+- Danh sách skill của bảng xem ở **🧠 Bộ nhớ → Skill**.
+
+Mỗi `SKILL.md` cần phần đầu có `name` và `description`; agent dựa vào `description` để biết khi nào dùng skill.
+
 ## Git: Pull Request, Merge rồi push, hoặc merge cục bộ
 
 Mỗi bảng chọn một cách đưa việc đã duyệt vào repo, ở nút **⑂** trên thanh trên cùng (trên điện thoại: menu ☰ → ⑂):
