@@ -17,9 +17,23 @@ export function bucket(c: Card): Bucket {
 
 const ORDER: Record<Bucket, number> = { you: 0, failed: 1, running: 2, todo: 3, done: 4 };
 
-/** Things that need you first, then failures, running work and drafts; newest first within. */
-export function byUrgency(a: Card, b: Card): number {
-  return ORDER[bucket(a)] - ORDER[bucket(b)] || b.updatedAt.localeCompare(a.updatedAt);
+/**
+ * Things that need you first, then failures and running work (newest first), then the to-do
+ * list in the Kanban's own order: board by board, top to bottom, so a new task goes last.
+ */
+export function byUrgency(projectIds: string[] = []): (a: Card, b: Card) => number {
+  const board = (c: Card) => {
+    const i = projectIds.indexOf(c.projectId);
+    return i < 0 ? projectIds.length : i;
+  };
+  return (a, b) => {
+    const order = ORDER[bucket(a)] - ORDER[bucket(b)];
+    if (order) return order;
+    if (bucket(a) === 'todo') {
+      return board(a) - board(b) || a.position - b.position || a.createdAt.localeCompare(b.createdAt);
+    }
+    return b.updatedAt.localeCompare(a.updatedAt);
+  };
 }
 
 export function badge(c: Card): { label: string; tone: Tone; Icon: LucideIcon } {

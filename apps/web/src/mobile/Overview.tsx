@@ -41,7 +41,10 @@ export function Overview({
   onNotify: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>('all');
-  const active = useMemo(() => cards.filter((c) => bucket(c) !== 'done').sort(byUrgency), [cards]);
+  const active = useMemo(
+    () => cards.filter((c) => bucket(c) !== 'done').sort(byUrgency(projects.map((p) => p.id))),
+    [cards, projects],
+  );
   const count = (b: Bucket) => active.filter((c) => bucket(c) === b).length;
   const counts = { all: active.length, you: count('you'), running: count('running'), failed: count('failed') };
   const shown = filter === 'all' ? active : active.filter((c) => bucket(c) === filter);
