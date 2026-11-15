@@ -5,10 +5,10 @@ import { api } from '../api.ts';
 import { useAgentModels } from '../hooks.ts';
 import { MODE_TAGS } from '../modes.ts';
 import { agentText } from '../models.ts';
-import { clockLabel } from '../text.ts';
+import { clockLabel, plainText, splitOptions } from '../text.ts';
 import { CiLabel, ciSummary } from '../components/PrPanel.tsx';
 import type { ToastApi } from '../components/Toasts.tsx';
-import { badge, bucket, byUrgency, splitOptions, timeAgo, type Bucket } from './status.ts';
+import { badge, bucket, byUrgency, timeAgo, type Bucket } from './status.ts';
 
 type Filter = 'all' | 'you' | 'running' | 'failed';
 
@@ -162,7 +162,7 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
         </div>
         <div className="m-card-title">{card.title}</div>
         {kind === 'you' && card.status === 'review' && card.summary && <p className="m-card-ok">
-            <Check aria-hidden /> {card.summary}
+            <Check aria-hidden /> {plainText(card.summary)}
           </p>}
         {kind === 'failed' && card.error && <p className="m-card-err">{card.error.split('\n')[0]}</p>}
         {card.repos.length > 0 && (
@@ -221,7 +221,7 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
             : `${w.kind === 'login' ? 'Agent cần đăng nhập: ' : w.kind === 'setup' ? 'Cần thiết lập: ' : 'Agent chờ xác nhận: '}${w.text.split('\n')[0]}`}
         </div>
       )}
-      {q && <div className="m-callout">Agent hỏi: {q.question}</div>}
+      {q && <div className="m-callout">Agent hỏi: {plainText(q.question)}</div>}
 
       <div className="m-actions">
         {card.status === 'review' && kind === 'you' && (

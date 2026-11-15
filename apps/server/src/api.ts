@@ -277,15 +277,35 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     return c.json(await registerProject(c.get('userId'), p.id, p.deviceId, p.repoPath));
   });
 
+  api.patch('/projects/:id', async (c) => {
+    const p = await ownProject(c, c.req.param('id'));
+    const b = await body<{ name?: string }>(c);
+    if (b.name !== undefined) {
+      const name = String(b.name).trim();
+      if (!name) throw new HttpError(400, 'Tên bảng không được để trống.');
+      if (name.length > 80) throw new HttpError(400, 'Tên bảng tối đa 80 ký tự.');
+      await store.updateProject(p.id, { name });
+    }
+    const project = (await store.getProject(p.id))!;
+    hub.sendToUser(c.get('userId'), { type: 'project.updated', project });
+    return c.json(project);
+  });
+
   api.delete('/projects/:id', async (c) => {
     const p = await ownProject(c, c.req.param('id'));
-    const previewing = (await store.listCards(p.id)).filter((card) => card.preview).map((card) => card.id);
+    const cards = await store.listCards(p.id);
+    // An agent still at work would go on in Orca with no board to report to.
+    const busy = cards.filter((card) => card.status === 'in_progress' || card.status === 'needs_input');
+    if (busy.length)
+      throw new HttpError(409, `Bảng còn ${busy.length} việc đang chạy hoặc chờ bạn. Dừng các việc đó trước khi xóa bảng.`);
+    const previewing = cards.filter((card) => card.preview).map((card) => card.id);
     for (const cardId of await store.deleteProject(p.id)) rmSync(attachmentDir(cardId), { recursive: true, force: true });
     // Best effort: stop the board's and its cards' dev servers and ngrok links on the bridge.
     void Promise.allSettled([
       ...(p.preview ? [hub.request(p.deviceId, 'project.preview.stop', { projectId: p.id }, 15_000)] : []),
       ...previewing.map((cardId) => hub.request(p.deviceId, 'card.preview.stop', { cardId }, 15_000)),
     ]);
+    hub.sendToUser(c.get('userId'), { type: 'project.deleted', projectId: p.id });
     return c.json({ ok: true });
   });
 

@@ -20,7 +20,8 @@ import { api } from '../api.ts';
 import { useAgentModels, useNarrow, useScrollLock, type AgentModels } from '../hooks.ts';
 import { MODE_LABELS, MODE_TAGS } from '../modes.ts';
 import { agentText, readLastModel } from '../models.ts';
-import { clockLabel } from '../text.ts';
+import { addedText, clockLabel, listChoices, splitOptions } from '../text.ts';
+import { Markdown } from './Markdown.tsx';
 import { PlanView } from './PlanView.tsx';
 import { ModelSelect } from './ModelSelect.tsx';
 import { Dialog } from './Dialog.tsx';
@@ -130,7 +131,8 @@ export function CardPanel({
         {card.error && <div className="banner error">{card.error}</div>}
         {card.summary && card.status !== 'todo' && (
           <div className="summary">
-            <strong>Agent báo cáo:</strong> {card.summary}
+            <div className="summary-head">Agent báo cáo</div>
+          <Markdown text={card.summary} />
           </div>
         )}
 
@@ -317,11 +319,32 @@ export function WaitingBox({
     );
   }
   if (w.kind === 'question') {
+    // The bridge appends "Lựa chọn: …" when the agent offered choices: one button each.
+    const { question, options } = splitOptions(w.text);
     return (
       <div className="waiting-box">
         <div className="waiting-title">Agent hỏi bạn</div>
-        <p className="waiting-text">{w.text}</p>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder="Câu trả lời của bạn…" />
+        <Markdown text={listChoices(question)} className="waiting-md" />
+        {options.length > 0 && (
+          <div className="row wrap">
+            {options.map((o) => (
+              <button
+                key={o}
+                className="btn"
+                disabled={busy}
+                onClick={() => run(() => api.reply(card.id, { messageId: w.messageId, text: o }), `Đã trả lời: ${o}`)}
+              >
+                Chọn {o}
+              </button>
+            ))}
+          </div>
+        )}
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          placeholder={options.length ? 'Hoặc trả lời khác, giải thích thêm…' : 'Câu trả lời của bạn…'}
+        />
         <button
           className="btn primary"
           disabled={busy || !text.trim()}
@@ -578,8 +601,15 @@ function ReviewTab({
       </div>
     );
   }
+  const answer = card.mode === 'ask' && diff ? addedText(diff.patch, '.localkan/answer.md') : null;
   return (
     <div className="review">
+      {answer && (
+        <section className="answer">
+          <div className="summary-head">Câu trả lời</div>
+          <Markdown text={answer} />
+        </section>
+      )}
       {multi && <ReposPanel card={card} toasts={toasts} />}
       {prFlow && card.status !== 'done' && <PrPanel card={card} project={project} toasts={toasts} />}
       <div className="row">

@@ -62,6 +62,7 @@ export const api = {
   createProject: (p: { name: string; deviceId: string; repoPath: string }) => call<Project>('POST', '/projects', p),
   retryProject: (id: string) => call<Project>('POST', `/projects/${id}/retry`),
   deleteProject: (id: string) => call('DELETE', `/projects/${id}`),
+  renameProject: (id: string, name: string) => call<Project>('PATCH', `/projects/${id}`, { name }),
 
   cards: (projectId: string) => call<Card[]>('GET', `/projects/${projectId}/cards`),
   createCard: (projectId: string, c: Pick<Card, 'title' | 'prompt' | 'agent' | 'model' | 'mode' | 'parentCardId'> & { autoPreview?: boolean }) =>

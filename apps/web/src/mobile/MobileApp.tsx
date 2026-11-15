@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, BellOff, ChevronLeft, Eye, GitBranch, Globe, Kanban, LogOut, X } from 'lucide-react';
+import { Bell, BellOff, ChevronLeft, Eye, GitBranch, Globe, Kanban, LogOut, Settings2, X } from 'lucide-react';
 import type { Card, Device, LogLine, Project } from '@localkan/protocol';
 import { CardPanel } from '../components/CardPanel.tsx';
 import { useScrollLock } from '../hooks.ts';
@@ -11,6 +11,7 @@ import type { ToastApi } from '../components/Toasts.tsx';
 import { CardScreen } from './CardScreen.tsx';
 import { NewTask } from './NewTask.tsx';
 import { Overview } from './Overview.tsx';
+import { BoardDialog } from '../components/BoardDialog.tsx';
 
 /** Phone layout: an overview of every board's work, a quick "new task" screen, and one screen
  *  per card. Screens live in the URL hash so the phone's back gesture works. */
@@ -48,7 +49,7 @@ export function MobileApp({
   const inApp = useRef(false);
   const [menu, setMenu] = useState(false);
   const [full, setFull] = useState<string | null>(null);
-  const [tool, setTool] = useState<{ kind: 'browser' | 'preview' | 'git'; projectId: string } | null>(null);
+  const [tool, setTool] = useState<{ kind: 'browser' | 'preview' | 'git' | 'board'; projectId: string } | null>(null);
   useScrollLock(menu);
 
   // Each screen starts at the top (the overview's scroll position must not carry over).
@@ -169,6 +170,9 @@ export function MobileApp({
                   <button className="m-btn small" onClick={() => (setMenu(false), setTool({ kind: 'git', projectId: p.id }))}>
                     <GitBranch /> {p.git.flow === 'pr' ? `PR → ${p.git.baseBranch ?? p.baseRef ?? 'main'}` : p.git.flow === 'push' ? `Push → ${p.git.baseBranch ?? p.baseRef ?? 'main'}` : 'Git'}
                   </button>
+                  <button className="m-btn small" onClick={() => (setMenu(false), setTool({ kind: 'board', projectId: p.id }))} aria-label={`Cài đặt bảng ${p.name}`}>
+                    <Settings2 /> Bảng
+                  </button>
                 </div>
               </div>
             ))}
@@ -196,7 +200,16 @@ export function MobileApp({
       {tool && toolProject && tool.kind === 'git' && (
         <GitSettingsDialog project={toolProject} onClose={() => setTool(null)} toasts={toasts} />
       )}
-      {tool && toolProject && tool.kind !== 'git' && (
+      {tool && toolProject && tool.kind === 'board' && (
+        <BoardDialog
+          project={toolProject}
+          device={devices.find((d) => d.id === toolProject.deviceId) ?? null}
+          cards={all.filter((c) => c.projectId === toolProject.id)}
+          onClose={() => setTool(null)}
+          toasts={toasts}
+        />
+      )}
+      {tool && toolProject && (tool.kind === 'browser' || tool.kind === 'preview') && (
         <Dialog
           title={tool.kind === 'browser' ? `Trình duyệt · ${toolProject.name}` : `Xem trước ${toolProject.baseRef ?? 'main'} · ${toolProject.name}`}
           onClose={() => setTool(null)}

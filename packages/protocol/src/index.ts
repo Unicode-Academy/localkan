@@ -588,7 +588,8 @@ export type ServerToWeb =
   | { type: 'card.deleted'; cardId: string; projectId: string }
   | { type: 'card.log'; cardId: string; lines: LogLine[] }
   | { type: 'device.updated'; device: Device }
-  | { type: 'project.updated'; project: Project };
+  | { type: 'project.updated'; project: Project }
+  | { type: 'project.deleted'; projectId: string };
 
 /** Push notification events. `done`: the agent finished (review); `input`: the card needs you
  *  (question, sign-in, confirmation); `failed`: the run failed. */

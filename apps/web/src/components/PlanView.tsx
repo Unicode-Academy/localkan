@@ -5,6 +5,7 @@ import { api } from '../api.ts';
 import { useAgentModels } from '../hooks.ts';
 import { readLastAgent, readLastModel, saveLastChoice } from '../models.ts';
 import { readPlan } from '../plan.ts';
+import { Markdown } from './Markdown.tsx';
 import { ModelSelect } from './ModelSelect.tsx';
 import type { ToastApi } from './Toasts.tsx';
 
@@ -64,7 +65,7 @@ export function PlanView({ card, project, diff, toasts }: { card: Card; project:
 
   return (
     <div className="plan">
-      {plan.goal && <p className="plan-goal">{plan.goal}</p>}
+      {plan.goal && <Markdown text={plan.goal} className="plan-goal" />}
       <ol className="plan-tasks">
         {plan.tasks.map((t, i) => (
           <li key={i} className={skipped.has(i) ? 'off' : undefined}>
@@ -75,14 +76,16 @@ export function PlanView({ card, project, diff, toasts }: { card: Card; project:
               </span>
             </label>
             {t.prompt && (
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 className={`plan-prompt${open.has(i) ? ' open' : ''}`}
                 onClick={() => setOpen((s) => toggle(s, i))}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setOpen((s) => toggle(s, i)))}
                 title={open.has(i) ? 'Thu gọn' : 'Xem đầy đủ'}
               >
-                {t.prompt}
-              </button>
+                <Markdown text={t.prompt} />
+              </div>
             )}
           </li>
         ))}

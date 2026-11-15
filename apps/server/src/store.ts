@@ -349,7 +349,7 @@ export class Store {
 
   async updateProject(
     id: string,
-    patch: Partial<Pick<ProjectDoc, 'status' | 'baseRef' | 'error' | 'preview' | 'git' | 'repos' | 'repoGit'>>,
+    patch: Partial<Pick<ProjectDoc, 'name' | 'status' | 'baseRef' | 'error' | 'preview' | 'git' | 'repos' | 'repoGit'>>,
   ) {
     await this.projects.updateOne({ _id: id }, { $set: patch });
   }

@@ -14,6 +14,7 @@ import { useAgentModels, useScrollLock } from '../hooks.ts';
 import { agentText } from '../models.ts';
 import { addedText } from '../text.ts';
 import { PlanView } from '../components/PlanView.tsx';
+import { Markdown } from '../components/Markdown.tsx';
 import { FinishBox, LogTab, WaitingBox, type Run } from '../components/CardPanel.tsx';
 import { DiffView } from '../components/DiffView.tsx';
 import { ciSummary, PrPanel, ReposPanel, shipPlan } from '../components/PrPanel.tsx';
@@ -163,7 +164,7 @@ export function CardScreen({
 
         {card.status === 'done' && (
           <section className="m-section">
-            {card.summary && <p>{card.summary}</p>}
+            {card.summary && <Markdown text={card.summary} />}
             {card.prUrl && (
               <a className="m-btn" href={card.prUrl} target="_blank" rel="noreferrer">
                 <ExternalLink /> Mở Pull Request
@@ -245,7 +246,7 @@ function Review({
       {card.summary && (
         <section className="m-section">
           <div className="m-section-head">Agent báo cáo</div>
-          <p className="m-prewrap">{card.summary}</p>
+          <Markdown text={card.summary} />
         </section>
       )}
 
@@ -265,7 +266,7 @@ function Review({
       {isAsk && answer && (
         <section className="m-section">
           <div className="m-section-head">Câu trả lời</div>
-          <div className="m-prewrap m-answer">{answer}</div>
+          <Markdown text={answer} className="m-answer" />
         </section>
       )}
 

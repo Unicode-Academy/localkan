@@ -58,15 +58,3 @@ export function timeAgo(iso: string, now = Date.now()): string {
   if (s < 86400) return `${Math.round(s / 3600)} giờ trước`;
   return `${Math.round(s / 86400)} ngày trước`;
 }
-
-/** The bridge appends "Lựa chọn: a, b" to questions that come with options. */
-export function splitOptions(text: string): { question: string; options: string[] } {
-  const m = text.match(/\n?Lựa chọn: (.+)$/);
-  if (!m) return { question: text, options: [] };
-  const options = m[1]
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean)
-    .slice(0, 6);
-  return { question: text.slice(0, m.index).trim(), options };
-}

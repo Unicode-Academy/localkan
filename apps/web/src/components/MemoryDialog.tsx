@@ -3,6 +3,7 @@ import { HANDOFF_STATUS_LABELS, type HandoffNote, type HandoffStatus, type Proje
 import { api } from '../api.ts';
 import { Dialog } from './Dialog.tsx';
 import type { ToastApi } from './Toasts.tsx';
+import { Markdown } from './Markdown.tsx';
 
 const PLACEHOLDER = `Ví dụ:
 - Next.js App Router, TypeScript, Tailwind v4, shadcn/ui.
@@ -133,7 +134,7 @@ export function MemoryDialog({ project, onClose, toasts }: { project: Project; o
                 <span className={`tag status-${n.status}`}>{HANDOFF_STATUS_LABELS[n.status as HandoffStatus] ?? n.status}</span>
                 <span className="muted small">{new Date(n.updatedAt).toLocaleString('vi-VN')}</span>
               </button>
-              {open === n.cardId && <pre className="prompt">{n.content}</pre>}
+              {open === n.cardId && <Markdown text={n.content} className="prompt" />}
             </article>
           ))}
         </div>

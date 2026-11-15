@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, BellOff, Brain, Eye, GitBranch, Globe, Kanban, Plus, Smartphone } from 'lucide-react';
+import { Bell, BellOff, Brain, Eye, GitBranch, Globe, Kanban, Plus, Settings2, Smartphone } from 'lucide-react';
 import type { Card, Device, LogLine, Project, ServerToWeb } from '@localkan/protocol';
 import { api, type AuthState, connectLive } from './api.ts';
 import { AuthScreen } from './components/AuthScreen.tsx';
 import { Board } from './components/Board.tsx';
 import { AccountMenu } from './components/AccountMenu.tsx';
+import { BoardDialog } from './components/BoardDialog.tsx';
 import { CardPanel } from './components/CardPanel.tsx';
 import { DevicesDialog } from './components/DevicesDialog.tsx';
 import { Dialog } from './components/Dialog.tsx';
@@ -59,7 +60,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
   const [logs, setLogs] = useState<Record<string, LogLine[]>>({});
   const [projectId, setProjectId] = useState<string | null>(readLastProject);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<'devices' | 'project' | 'memory' | 'preview' | 'browser' | 'notify' | 'git' | null>(null);
+  const [dialog, setDialog] = useState<'devices' | 'project' | 'board' | 'memory' | 'preview' | 'browser' | 'notify' | 'git' | null>(null);
   const [pushOn, setPushOn] = useState<boolean | null>(null);
   const [live, setLive] = useState(false);
   const toasts = useToasts();
@@ -204,6 +205,15 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
             return next;
           });
           break;
+        case 'project.deleted':
+          setProjects((prev) => {
+            const next = prev.filter((p) => p.id !== msg.projectId);
+            // The open board is gone: show another one.
+            setProjectId((cur) => (cur === msg.projectId ? (next[0]?.id ?? null) : cur));
+            return next;
+          });
+          setCards((prev) => Object.fromEntries(Object.entries(prev).filter(([, c]) => c.projectId !== msg.projectId)));
+          break;
       }
     };
     return connectLive(
@@ -277,6 +287,11 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
               </option>
             ))}
           </select>
+          {project && (
+            <button className="btn ghost" onClick={() => setDialog('board')} title="Đổi tên hoặc xóa bảng" aria-label="Cài đặt bảng">
+              <Settings2 />
+            </button>
+          )}
           <button className="btn ghost" onClick={() => setDialog('project')}>
             <Plus /> Bảng mới
           </button>
@@ -394,6 +409,9 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
 
         {dialog === 'notify' && <NotificationsDialog onClose={() => setDialog(null)} toasts={toasts} />}
         {dialog === 'git' && project && <GitSettingsDialog project={project} onClose={() => setDialog(null)} toasts={toasts} />}
+        {dialog === 'board' && project && (
+          <BoardDialog project={project} device={device} cards={projectCards} onClose={() => setDialog(null)} toasts={toasts} />
+        )}
         {dialog === 'memory' && project && <MemoryDialog project={project} onClose={() => setDialog(null)} toasts={toasts} />}
         {dialog === 'browser' && project && (
           <Dialog title={`Trình duyệt dùng chung · ${project.name}`} onClose={() => setDialog(null)} wide>

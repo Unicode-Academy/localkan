@@ -141,6 +141,19 @@ a {
 .btn.danger {
   color: var(--danger);
 }
+.danger-zone {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.danger-zone p {
+  margin: 0;
+}
+.warn-text {
+  color: var(--warn);
+}
 .btn.primary.danger,
 .btn.danger.primary {
   background: var(--danger);
@@ -616,25 +629,21 @@ label {
 .plan-no {
   color: var(--muted);
 }
+/* A task's description: about three lines until opened. */
 .plan-prompt {
-  appearance: none;
-  border: 0;
-  background: none;
-  padding: 0 0 0 24px;
-  font: inherit;
+  padding-left: 24px;
   font-size: 13px;
   color: var(--muted);
-  text-align: left;
-  white-space: pre-wrap;
   cursor: pointer;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  max-height: 4.6em;
   overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
+  mask-image: linear-gradient(to bottom, #000 60%, transparent);
 }
 .plan-prompt.open {
-  display: block;
-  -webkit-line-clamp: unset;
+  max-height: none;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 .plan-import {
   display: grid;
@@ -2461,4 +2470,110 @@ label {
 .git-repo-section h3 {
   margin: 0;
   font-size: 15px;
+}
+
+/* Text an agent wrote, rendered from Markdown (reports, questions, answers, plans, notes). */
+.md {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.md.md-plain {
+  white-space: pre-wrap;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p,
+.md ul,
+.md ol,
+.md pre,
+.md blockquote,
+.md table {
+  margin: 0 0 0.6em;
+}
+.md ul,
+.md ol {
+  padding-left: 1.4em;
+}
+.md li + li {
+  margin-top: 0.25em;
+}
+.md li > p {
+  margin: 0;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  font-size: 1em;
+  font-weight: 700;
+  margin: 0.8em 0 0.35em;
+}
+.md h1 {
+  font-size: 1.15em;
+}
+.md code {
+  font-size: 0.9em;
+}
+.md pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre;
+}
+.md pre code {
+  background: none;
+  padding: 0;
+}
+.md blockquote {
+  padding-left: 10px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--muted);
+}
+.md table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+.md th,
+.md td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.md a {
+  color: var(--accent);
+}
+.md hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 0.8em 0;
+}
+.md input[type='checkbox'] {
+  width: auto;
+  margin: 0 4px 0 0;
+}
+.summary-head {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.answer {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+/* On a desktop the report sits above the tabs: keep a long one from pushing them away. */
+@media (min-width: 761px) {
+  .summary {
+    max-height: 32vh;
+    overflow-y: auto;
+  }
 }
