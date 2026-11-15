@@ -63,6 +63,10 @@ pub struct WaitingInfo {
     /// Page the agent was trying to open (kind = "login").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// When Localkan tells the agent to go on, once its usage limit has reset (kind = "limit"),
+    /// RFC 3339.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_at: Option<String>,
 }
 
 /// Partial card update. `Some(None)` serializes as `null` (clear the field);

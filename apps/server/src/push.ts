@@ -261,7 +261,15 @@ export function cardPayload(event: CardEventName, card: Card, projectName: strin
   }
   const w = card.waiting;
   const head =
-    w?.kind === 'login' ? '🔑 Cần đăng nhập' : w?.kind === 'question' ? '❓ Agent hỏi' : w?.kind === 'setup' ? '⚙ Cần thiết lập' : '⏸ Cần xác nhận';
+    w?.kind === 'login'
+      ? '🔑 Cần đăng nhập'
+      : w?.kind === 'question'
+        ? '❓ Agent hỏi'
+        : w?.kind === 'setup'
+          ? '⚙ Cần thiết lập'
+          : w?.kind === 'limit'
+            ? '⏳ Hết hạn mức'
+            : '⏸ Cần xác nhận';
   return { ...base, title: `${head}: ${card.title}`, body: clip(w?.text ? `${where} — ${w.text}` : where) };
 }
 

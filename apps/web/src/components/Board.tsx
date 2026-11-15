@@ -1,5 +1,5 @@
 import { useState, type DragEvent } from 'react';
-import { CirclePause, CornerDownRight, Eye, Image, KeyRound, ListTodo, Plus } from 'lucide-react';
+import { CirclePause, CornerDownRight, Eye, Hourglass, Image, KeyRound, ListTodo, Plus } from 'lucide-react';
 import {
   type Card,
   CARD_STATUS_LABELS,
@@ -13,6 +13,7 @@ import { api } from '../api.ts';
 import { useAgentModels, type AgentModels } from '../hooks.ts';
 import { MODE_TAGS } from '../modes.ts';
 import { agentText } from '../models.ts';
+import { clockLabel } from '../text.ts';
 import { NewCardDialog } from './NewCardDialog.tsx';
 import { RunBadge } from './RunBadge.tsx';
 import type { ToastApi } from './Toasts.tsx';
@@ -180,16 +181,25 @@ function CardTile({
       {parentTitle && <div className="tile-parent"><CornerDownRight /> tiếp từ: {parentTitle}</div>}
       {card.waiting && (
         <div className="tile-waiting">
-          {card.waiting.kind === 'login' ? (
+          {card.waiting.kind === 'limit' ? (
             <>
-              <KeyRound /> Cần đăng nhập ·{' '}
+              <Hourglass /> Hết hạn mức
+              {card.waiting.resumeAt ? `, tự làm tiếp lúc ${clockLabel(card.waiting.resumeAt)}` : ': bấm Làm tiếp khi được làm mới'}
             </>
           ) : (
             <>
-              <CirclePause />{' '}
+              {card.waiting.kind === 'login' ? (
+                <>
+                  <KeyRound /> Cần đăng nhập ·{' '}
+                </>
+              ) : (
+                <>
+                  <CirclePause />{' '}
+                </>
+              )}
+              {card.waiting.text.split('\n')[0].slice(0, 90)}
             </>
           )}
-          {card.waiting.text.split('\n')[0].slice(0, 90)}
         </div>
       )}
       {card.error && <div className="tile-error">{card.error.slice(0, 120)}</div>}

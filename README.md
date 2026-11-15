@@ -86,7 +86,11 @@ Mỗi `SKILL.md` cần phần đầu có `name` và `description`; agent dựa v
 - Agent chạy với cờ mặc định của Orca để không hỏi quyền từng lệnh: Codex `--dangerously-bypass-approvals-and-sandbox`, Grok `--permission-mode bypassPermissions`.
 - **Model:** khi giao việc, chọn agent rồi chọn model (để "Model mặc định" thì agent dùng model mặc định của nó). Danh sách lấy từ chính máy chạy bridge lúc bridge khởi động, làm mới mỗi 6 giờ: Codex `codex debug models`, Grok `grok models`, agy `agy models`; Claude Code dùng alias `fable`, `opus`, `sonnet`, `haiku` (luôn trỏ tới bản mới nhất). Có model, Codex được mở qua `--model` của Orca. Claude Code, Grok và agy thì bridge tự ghép lệnh: lệnh và cờ đang đặt trong Orca, thêm `--model`. Lý do là Orca chỉ tự thêm cờ của nó khi lệnh đúng bằng tên agent. Lựa chọn agent và model gần nhất được nhớ cho lần giao sau.
 - Bridge tìm lệnh trong PATH, `~/.local/bin`, `~/.codex/bin`, `~/.grok/bin` và Homebrew. Agent nào tìm thấy được đánh ✓ trong hộp thoại máy chạy bridge (nút máy trên thanh trên cùng).
-- Hạn mức của agent tính theo tài khoản của bạn. Grok hiện phần còn lại ở thanh trạng thái ("Weekly limit left"); hết hạn mức thì agent không làm tiếp được, xem tab Terminal của thẻ rồi dừng việc.
+- **Hết hạn mức:** hạn mức tính theo tài khoản agent của bạn.
+  - Khi agent dừng với câu báo hết hạn mức (ví dụ "5-hour limit reached · resets 3pm", "You've hit your usage limit… try again in 2 hours"), thẻ sang **Cần bạn xử lý** với nhãn "Hết hạn mức" và bạn nhận thông báo. Agent vẫn giữ phiên, nên nhớ việc đang làm dở; thay đổi đã có vẫn nằm trong worktree.
+  - Nếu câu báo có giờ reset, bridge tự nhắc agent làm tiếp lúc đó (cộng 1 phút). Nếu không có, bấm **Làm tiếp** khi hạn mức đã được làm mới.
+  - Nếu agent tự thoát vì hết hạn mức, thẻ sang Review kèm lý do; bấm "Chạy lại từ đầu" khi hạn mức được làm mới.
+  - Bridge chỉ xét câu báo ở cuối màn hình agent, lúc agent không còn làm việc (không có "esc to interrupt"), nên chữ "rate limit" trong code hay output của test không làm thẻ bị báo nhầm.
 
 ## Git: Pull Request, Merge rồi push, hoặc merge cục bộ
 

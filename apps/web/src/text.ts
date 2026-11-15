@@ -19,3 +19,10 @@ export function addedText(patch: string, path: string): string | null {
     .map((l) => l.slice(1));
   return lines.length ? lines.join('\n') : null;
 }
+
+/** "15:00", or "09:00 16/11" when not today. */
+export function clockLabel(iso: string, now = new Date()): string {
+  const at = new Date(iso);
+  const time = at.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  return at.toDateString() === now.toDateString() ? time : `${time} ${at.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}`;
+}

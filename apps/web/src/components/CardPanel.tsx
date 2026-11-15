@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { ArrowDown, ArrowUp, Check, CircleStop, CornerDownRight, ExternalLink, Play, RefreshCw, RotateCcw, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CircleStop, CornerDownRight, ExternalLink, Hourglass, Play, RefreshCw, RotateCcw, X } from 'lucide-react';
 import {
   AGENT_LABELS,
   AGENTS,
@@ -20,6 +20,7 @@ import { api } from '../api.ts';
 import { useAgentModels, useNarrow, useScrollLock, type AgentModels } from '../hooks.ts';
 import { MODE_LABELS, MODE_TAGS } from '../modes.ts';
 import { agentText, readLastModel } from '../models.ts';
+import { clockLabel } from '../text.ts';
 import { PlanView } from './PlanView.tsx';
 import { ModelSelect } from './ModelSelect.tsx';
 import { Dialog } from './Dialog.tsx';
@@ -275,6 +276,32 @@ export function WaitingBox({
             Gửi
           </button>
         </details>
+      </div>
+    );
+  }
+  if (w.kind === 'limit') {
+    return (
+      <div className="waiting-box">
+        <div className="waiting-title">
+          <Hourglass /> Agent hết hạn mức sử dụng
+        </div>
+        <p className="waiting-text">{w.text}</p>
+        <p className="muted small">
+          {w.resumeAt
+            ? `Localkan sẽ tự nhắc agent làm tiếp lúc ${clockLabel(w.resumeAt)}, trong cùng phiên nên agent nhớ việc đang làm dở. Thay đổi đã có vẫn nằm trong worktree.`
+            : 'Không đọc được giờ hạn mức được làm mới. Khi tới giờ, bấm Làm tiếp: agent làm tiếp trong cùng phiên và nhớ việc đang làm dở.'}
+        </p>
+        <div className="row wrap">
+          <button className="btn primary" disabled={busy} onClick={() => run(() => api.reply(card.id, {}), 'Đã nhắc agent làm tiếp.')}>
+            <Play /> Làm tiếp ngay
+          </button>
+        </div>
+        {w.screen && (
+          <details>
+            <summary className="small">Màn hình agent</summary>
+            <pre className="screen">{w.screen.join('\n')}</pre>
+          </details>
+        )}
       </div>
     );
   }

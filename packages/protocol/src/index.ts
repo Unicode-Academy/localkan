@@ -84,8 +84,10 @@ export interface WaitingInfo {
    *  `prompt`: the agent's terminal is parked on an interactive prompt (permission, trust…).
    *  `setup`: a one-time step on the bridge machine is needed; retry the card afterwards.
    *  `login`: a page in the shared browser needs a sign-in; the human signs in remotely
-   *  (Localkan types into the browser, the agent never sees the password), then replies. */
-  kind: 'question' | 'prompt' | 'setup' | 'login';
+   *  (Localkan types into the browser, the agent never sees the password), then replies.
+   *  `limit`: the agent stopped on its usage limit; it goes on when told to (automatically at
+   *  `resumeAt` when the reset time is known). */
+  kind: 'question' | 'prompt' | 'setup' | 'login' | 'limit';
   text: string;
   /** Orca message id to reply to (kind = question | login). */
   messageId?: string;
@@ -95,6 +97,9 @@ export interface WaitingInfo {
   pageId?: string;
   /** Page the agent was trying to open (kind = login). */
   url?: string;
+  /** When the bridge tells the agent to go on, just after its usage limit resets, ISO 8601
+   *  (kind = limit). */
+  resumeAt?: string;
 }
 
 /** An image attached to a card (screenshots, mockups). Stored on the server and copied into

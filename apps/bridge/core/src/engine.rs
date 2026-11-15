@@ -110,6 +110,12 @@ pub struct CardRt {
     /// Branch that "merge" / "PR" target. Differs from `base_ref` (the diff base) when the
     /// card continues from another card's unmerged branch.
     pub merge_target: Option<String>,
+    /// Agent stopped on its usage limit (waiting kind "limit"): when to tell it to go on
+    /// (Unix seconds), if the limit message said when it resets.
+    pub limit_resume_at: Option<i64>,
+    /// Right after telling the agent to go on, its old limit notice is still on screen:
+    /// do not take it for a new one until then (Unix seconds).
+    pub limit_grace_until: Option<i64>,
 }
 
 pub struct Engine {
@@ -940,6 +946,11 @@ impl Engine {
             patch.status = Some("in_progress".into());
             patch.waiting = Some(None);
             self.emit(patch).await;
+            return Ok(json!({ "ok": true }));
+        }
+
+        if card.waiting_kind.as_deref() == Some("limit") {
+            self.resume_after_limit(&card.card_id, p.text.clone().filter(|t| !t.trim().is_empty()), false).await?;
             return Ok(json!({ "ok": true }));
         }
 
@@ -2213,7 +2224,16 @@ impl Engine {
                 tracing::debug!(pid, "inbox: {e:#}");
             }
         }
+        let now = chrono::Local::now().timestamp();
         for c in cards.iter().filter(|c| c.running) {
+            if c.waiting_kind.as_deref() == Some("limit") && c.limit_resume_at.is_some_and(|t| t <= now) {
+                if let Err(e) = self.resume_after_limit(&c.card_id, None, true).await {
+                    tracing::warn!(card = c.card_id, "resume after limit: {e:#}");
+                    self.update_card(&c.card_id, |c| c.limit_resume_at = None).await;
+                    self.sys(&c.card_id, format!("Không nhắc được agent làm tiếp: {e:#}. Bấm Làm tiếp để thử lại.")).await;
+                }
+                continue;
+            }
             if let Err(e) = self.poll_output(&c.card_id).await {
                 tracing::debug!(card = c.card_id, "output: {e:#}");
             }
@@ -2438,6 +2458,7 @@ impl Engine {
                 } else {
                     output_lines(&r)
                 };
+                self.check_limit(&card, &lines).await;
                 self.log(card_id, "agent", lines).await;
                 Ok(())
             }
@@ -2447,6 +2468,88 @@ impl Engine {
             }
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// The agent stopped on its usage limit: park the card in "Cần bạn xử lý" (with the reset
+    /// time when known, for the automatic resume). Clear it when the agent works again.
+    async fn check_limit(&self, card: &CardRt, screen: &[String]) {
+        let now = chrono::Local::now();
+        let hit = if card.limit_grace_until.is_some_and(|t| t > now.timestamp()) {
+            None
+        } else {
+            crate::limits::detect(screen, now)
+        };
+        match (hit, card.waiting_kind.as_deref()) {
+            (Some(hit), None) => {
+                // A minute after the reset, so the limit is surely lifted.
+                let resume = hit.reset_at.map(|t| t + chrono::Duration::minutes(1));
+                self.update_card(&card.card_id, |c| {
+                    c.waiting_kind = Some("limit".into());
+                    c.limit_resume_at = resume.map(|t| t.timestamp());
+                })
+                .await;
+                let text = match resume {
+                    Some(t) => format!(
+                        "Agent hết hạn mức sử dụng ({}). Localkan sẽ nhắc nó làm tiếp lúc {}, ngay sau khi hạn mức được làm mới.",
+                        hit.line,
+                        t.format("%H:%M %d/%m")
+                    ),
+                    None => format!("Agent hết hạn mức sử dụng ({}). Khi hạn mức được làm mới, bấm Làm tiếp.", hit.line),
+                };
+                self.sys(&card.card_id, text.clone()).await;
+                let mut patch = CardStatePatch::new(&card.card_id);
+                patch.run_state = Some(RUN_WAITING.into());
+                patch.status = Some("needs_input".into());
+                patch.waiting = Some(Some(WaitingInfo {
+                    kind: "limit".into(),
+                    text,
+                    resume_at: resume.map(|t| t.to_rfc3339()),
+                    screen: Some(screen[screen.len().saturating_sub(12)..].to_vec()),
+                    ..Default::default()
+                }));
+                self.emit(patch).await;
+            }
+            // The notice is gone (someone typed in the agent's terminal and it went on).
+            (None, Some("limit")) if !card.limit_grace_until.is_some_and(|t| t > now.timestamp()) => {
+                self.update_card(&card.card_id, |c| {
+                    c.waiting_kind = None;
+                    c.limit_resume_at = None;
+                })
+                .await;
+                let mut patch = CardStatePatch::new(&card.card_id);
+                patch.run_state = Some(RUN_RUNNING.into());
+                patch.status = Some("in_progress".into());
+                patch.waiting = Some(None);
+                self.emit(patch).await;
+            }
+            _ => {}
+        }
+    }
+
+    /// Tell an agent that stopped on its usage limit to go on (same session, same context).
+    async fn resume_after_limit(&self, card_id: &str, text: Option<String>, auto: bool) -> Result<()> {
+        let card = self.card(card_id).await?;
+        let term = card.agent_terminal.clone().ok_or_else(|| anyhow!("Thẻ chưa có terminal agent."))?;
+        let text = text.unwrap_or_else(|| RESUME_AFTER_LIMIT.to_string());
+        self.orca()?.call(&["terminal", "send", "--terminal", &term, "--text", &text, "--enter"]).await?;
+        let grace = chrono::Local::now().timestamp() + 45;
+        self.update_card(card_id, |c| {
+            c.waiting_kind = None;
+            c.limit_resume_at = None;
+            c.limit_grace_until = Some(grace);
+        })
+        .await;
+        self.sys(
+            card_id,
+            if auto { "Đến giờ hạn mức được làm mới: đã nhắc agent làm tiếp." } else { "Đã nhắc agent làm tiếp." },
+        )
+        .await;
+        let mut patch = CardStatePatch::new(card_id);
+        patch.run_state = Some(RUN_RUNNING.into());
+        patch.status = Some("in_progress".into());
+        patch.waiting = Some(None);
+        self.emit(patch).await;
+        Ok(())
     }
 
     async fn observe(&self, card_id: &str) -> Result<()> {
@@ -2468,11 +2571,23 @@ impl Engine {
         }
         if card.running && r["projection"]["liveness"]["verdict"].as_str() == Some("exited") {
             self.update_card(card_id, |c| c.running = false).await;
-            self.sys(card_id, "Agent đã thoát trước khi báo xong.").await;
+            // Some CLIs quit on their usage limit: say so, the fix is to wait and run again.
+            let screen = match term.as_deref().or(card.agent_terminal.as_deref()) {
+                Some(t) => self.screen_of(t).await.unwrap_or_default(),
+                None => Vec::new(),
+            };
+            let why = match crate::limits::detect(&screen, chrono::Local::now()) {
+                Some(hit) => format!(
+                    "Agent đã thoát vì hết hạn mức sử dụng ({}). Khi hạn mức được làm mới, bấm \"Chạy lại từ đầu\".",
+                    hit.line
+                ),
+                None => "Agent đã thoát trước khi báo xong.".to_string(),
+            };
+            self.sys(card_id, why.clone()).await;
             let mut patch = CardStatePatch::new(card_id);
             patch.run_state = Some(RUN_FAILED.into());
             patch.status = Some("review".into());
-            patch.error = Some(Some("Agent đã thoát trước khi báo xong.".into()));
+            patch.error = Some(Some(why));
             self.emit(patch).await;
             return Ok(());
         }
@@ -2734,6 +2849,9 @@ const COMMON_RULES: &str = "Rules from Localkan (the reviewer's Kanban board):
 
 const ASK_RULES: &str = "- This card is a QUESTION, not a change request. Do not modify any project files.
 - Write your complete answer in Markdown to `.localkan/answer.md` (create the folder). That file is how the reviewer reads your answer.";
+
+/// Typed into an agent's terminal once its usage limit has reset.
+const RESUME_AFTER_LIMIT: &str = "Your usage limit has reset. Continue the task from where you stopped.";
 
 const PLAN_RULES: &str = "- This card is PLANNING, not implementation. Do not modify project files; read the code, docs and project notes as much as you need to plan well.
 - First make sure you understand what the reviewer wants. When the goal, scope, constraints or priorities are unclear, ask with the `orca orchestration ask` command from your instructions (with `--timeout-ms 3600000`): one focused question at a time, with concrete options when that helps, then wait for the reply. Ask only what changes the plan; skip what the code already answers. If an ask times out, resume it with its message id instead of asking again.

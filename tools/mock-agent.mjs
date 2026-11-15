@@ -7,6 +7,9 @@
 //     ("ASK: question || a, b" offers the choices a and b);
 //   - if it contains "LOGIN: <url>", opens <url> in Orca's shared browser, asks for a sign-in
 //     with a "[LOGIN] <url>" question, then records what the page shows after the answer;
+//   - if it contains "LIMIT", first stops on a usage-limit notice like a real CLI ("LIMIT: 2" says
+//     "try again in 2 minutes", "LIMIT: none" gives no reset time) and goes on once a line is
+//     typed into its terminal;
 //   - if it contains "FAIL", reports failure;
 //   - otherwise appends a line to MOCK_CHANGES.md and reports success (in a multi-repo task
 //     folder: in every repo listed in the task, or only the one named by "ONLY: <repo>").
@@ -19,6 +22,9 @@ import { join } from 'node:path';
 const ORCA = process.env.ORCA_BIN || 'orca';
 let buffer = '';
 let timer = null;
+/** Set while stopped on the mock usage limit: what to do once told to go on. */
+let onResume = null;
+let resumeInput = '';
 
 function log(msg) {
   process.stdout.write(`[mock-agent] ${msg}\n`);
@@ -68,6 +74,17 @@ function handleTask(text) {
     log(answer);
   }
 
+  const limit = spec.match(/\bLIMIT\b(?::\s*(\w+))?/);
+  if (limit) {
+    const minutes = Number(limit[1]) || 1;
+    log(limit[1] === 'none' ? 'Claude usage limit reached.' : `■ You've hit your usage limit. Try again in ${minutes} minute${minutes > 1 ? 's' : ''}.`);
+    onResume = () => finish(spec, taskId, dispatchId, from, answer);
+    return;
+  }
+  finish(spec, taskId, dispatchId, from, answer);
+}
+
+function finish(spec, taskId, dispatchId, from, answer) {
   log('working…');
   if (/FAIL/.test(spec)) {
     orca([
@@ -115,7 +132,22 @@ log(`ready in ${process.cwd()} (waiting for a task)`);
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => {
   // Strip bracketed-paste markers that terminals add around pasted text.
-  buffer += chunk.replace(/\u001b\[20[01]~/g, '');
+  const text = chunk.replace(/\u001b\[20[01]~/g, '');
+  if (onResume && !text.includes('=== TASK ===')) {
+    resumeInput += text;
+    if (!/[\r\n]/.test(resumeInput)) return;
+    const go = onResume;
+    onResume = null;
+    log(`told to go on: ${resumeInput.trim()}`);
+    resumeInput = '';
+    try {
+      go();
+    } catch (err) {
+      log(`error: ${err.stderr || err.message}`);
+    }
+    return;
+  }
+  buffer += text;
   if (!buffer.includes('=== TASK ===')) return;
   clearTimeout(timer);
   timer = setTimeout(() => {

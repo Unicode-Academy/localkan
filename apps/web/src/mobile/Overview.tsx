@@ -5,6 +5,7 @@ import { api } from '../api.ts';
 import { useAgentModels } from '../hooks.ts';
 import { MODE_TAGS } from '../modes.ts';
 import { agentText } from '../models.ts';
+import { clockLabel } from '../text.ts';
 import { CiLabel, ciSummary } from '../components/PrPanel.tsx';
 import type { ToastApi } from '../components/Toasts.tsx';
 import { badge, bucket, byUrgency, splitOptions, timeAgo, type Bucket } from './status.ts';
@@ -213,8 +214,11 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
 
       {w && w.kind !== 'question' && (
         <div className="m-callout">
-          {w.kind === 'login' ? 'Agent cần đăng nhập: ' : w.kind === 'setup' ? 'Cần thiết lập: ' : 'Agent chờ xác nhận: '}
-          {w.text.split('\n')[0]}
+          {w.kind === 'limit'
+            ? w.resumeAt
+              ? `Hết hạn mức, tự làm tiếp lúc ${clockLabel(w.resumeAt)}`
+              : 'Hết hạn mức: bấm Làm tiếp khi hạn mức được làm mới'
+            : `${w.kind === 'login' ? 'Agent cần đăng nhập: ' : w.kind === 'setup' ? 'Cần thiết lập: ' : 'Agent chờ xác nhận: '}${w.text.split('\n')[0]}`}
         </div>
       )}
       {q && <div className="m-callout">Agent hỏi: {q.question}</div>}
@@ -256,6 +260,11 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
         {w?.kind === 'login' && (
           <button className="m-btn primary" onClick={() => open()}>
             <KeyRound aria-hidden /> Đăng nhập
+          </button>
+        )}
+        {w?.kind === 'limit' && (
+          <button className="m-btn primary" disabled={busy} onClick={() => run(() => api.reply(card.id, {}), 'Đã nhắc agent làm tiếp.')}>
+            <Play aria-hidden /> Làm tiếp
           </button>
         )}
         {(w?.kind === 'prompt' || w?.kind === 'setup') && (
