@@ -19,6 +19,7 @@ pub mod preview;
 pub mod protocol;
 pub mod redact;
 pub mod runtime;
+pub mod setup;
 pub mod skills;
 pub mod store;
 

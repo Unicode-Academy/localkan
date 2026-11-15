@@ -219,6 +219,41 @@ Lưu ý:
 - Với app của chính bạn chạy ở localhost, cách gọn nhất là ghi tài khoản test vào **🧠 Bộ nhớ** dự án. Quy tắc cho phép agent tự dùng tài khoản test ghi ở đó.
 - Quy tắc mới chỉ áp dụng cho các lần giao việc từ bây giờ; agent đang chạy dở vẫn theo quy tắc cũ.
 
+## Cài Bridge trên máy mới
+
+Chỉ cần chép `Localkan Bridge.app` (hoặc file `.dmg`) sang máy đó rồi mở. Cửa sổ bridge có mục **Môi trường máy**, liệt kê những thứ bridge cần. Agent CLI không nằm trong danh sách: tự cài và đăng nhập agent bạn dùng.
+
+Nếu thiếu thứ bắt buộc, cửa sổ tự mở khi khởi động. Bấm **Cài … mục còn thiếu** để cài lần lượt; thứ nào đã có thì bỏ qua:
+
+| Mục | Bắt buộc | Cài bằng |
+| :-- | :-- | :-- |
+| Xcode Command Line Tools | ✓ | Hộp thoại của Apple (`xcode-select --install`): bấm Cài đặt, Localkan tự đi tiếp khi xong |
+| Homebrew | ✓ | `Homebrew.pkg` chính thức; macOS hỏi mật khẩu máy |
+| Git, Node.js | ✓ | `brew install git node` |
+| Orca | ✓ | Bản mới nhất từ GitHub Releases của Orca, chép vào `/Applications` (hoặc `~/Applications`) |
+| pnpm, GitHub CLI | tùy chọn | `brew install pnpm gh` |
+| ngrok, Google Chrome | tùy chọn | `brew install --cask ngrok google-chrome` |
+
+Mấy việc chỉ bạn làm được, mỗi việc có sẵn nút hoặc ô nhập ngay trong danh sách:
+- Đăng nhập GitHub: nút **Đăng nhập** mở Terminal chạy `gh auth login`.
+- Authtoken của ngrok: dán token vào ô, nút **Lấy token** mở trang lấy token.
+- Tên và email cho commit: điền vào hai ô, Localkan ghi bằng `git config --global`.
+
+Ghi chú:
+- Cài xong Orca thì bridge tự khởi động lại để dùng nó.
+- `brew install` chạy với `HOMEBREW_NO_INSTALL_UPGRADE=1`, nên không nâng cấp thứ đã có.
+- Máy không có giao diện (hoặc qua SSH) dùng bản headless thay cho cửa sổ app. Hai bước cần bạn bấm là hộp thoại của Apple và hộp mật khẩu, nên những bước đó vẫn phải làm trên máy.
+
+```bash
+lk-bridge setup --check
+```
+
+Lệnh trên chỉ liệt kê. Bỏ `--check` thì cài những thứ còn thiếu:
+
+```bash
+lk-bridge setup
+```
+
 ## Yêu cầu
 
 - macOS (đã thử trên macOS 27, Apple Silicon). Linux có thể chạy bản headless; Windows chưa thử.

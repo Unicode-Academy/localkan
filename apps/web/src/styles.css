@@ -72,12 +72,20 @@ body,
   height: 100%;
   margin: 0;
 }
+html {
+  /* iOS enlarges small text (paths, code) on its own; that alone can push lines past the
+     screen. Keep the sizes we set. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
   line-height: 1.45;
+  /* Long words (paths, file names, ids in an agent's report) wrap instead of overflowing. */
+  overflow-wrap: break-word;
 }
 code,
 pre {
@@ -595,6 +603,12 @@ label {
   gap: 12px;
   padding: 16px 18px 10px;
 }
+.panel-head > div {
+  min-width: 0;
+}
+.panel-meta code {
+  overflow-wrap: anywhere;
+}
 .panel-head h2 {
   font-size: 18px;
   margin: 2px 0 6px;
@@ -615,6 +629,7 @@ label {
 .summary {
   margin: 0 18px 10px;
   padding: 9px 12px;
+  overflow-wrap: anywhere;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -662,6 +677,7 @@ label {
 .panel-body {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 14px 18px 24px;
   overscroll-behavior: contain;
@@ -671,6 +687,7 @@ label {
 @media (max-width: 760px) {
   .panel-main {
     display: block;
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
@@ -691,9 +708,6 @@ label {
   .tabs button {
     flex-shrink: 0;
     white-space: nowrap;
-  }
-  .panel-meta code {
-    overflow-wrap: anywhere;
   }
 }
 /* The sign-in box holds a live page view: let it scroll inside the panel instead of pushing
@@ -775,6 +789,7 @@ label {
 .review,
 .task-view {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 /* Review decision under the tabs: outside the scrolling body, so it is always in reach. */
@@ -1423,6 +1438,9 @@ label {
 
 /* ===== Phone layout (mobile/) ===== */
 .m-app {
+  /* Last line of defence: anything still too wide is cut, instead of iOS zooming the whole
+     page out to fit it. */
+  overflow-x: clip;
   min-height: 100dvh;
   background: var(--bg);
   color: var(--text);
@@ -1961,6 +1979,8 @@ label {
 /* Card screen */
 .m-detail {
   display: grid;
+  /* Never wider than the screen, whatever a section holds (iOS would shrink the whole page). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   justify-items: start;
 }
@@ -1981,6 +2001,7 @@ label {
 }
 .m-section {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   padding: 14px;
   border: 1px solid var(--border);
@@ -2082,10 +2103,13 @@ label {
   margin: 0;
   padding: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 .m-files li {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  /* The path column may shrink below its longest word, so the path wraps (Safari does not
+     always count overflow-wrap: anywhere when sizing a 1fr column). */
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   padding: 8px 0;

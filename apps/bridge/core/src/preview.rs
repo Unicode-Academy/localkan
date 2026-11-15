@@ -181,7 +181,7 @@ fn plan_dev(wt: &Path, port: u16) -> Result<DevPlan> {
     Ok(DevPlan { manager, script, args, display })
 }
 
-fn chrome_binary() -> Option<PathBuf> {
+pub(crate) fn chrome_binary() -> Option<PathBuf> {
     [
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         "/Applications/Chromium.app/Contents/MacOS/Chromium",

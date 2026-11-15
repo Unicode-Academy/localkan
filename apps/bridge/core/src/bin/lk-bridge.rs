@@ -4,9 +4,13 @@
 //!   lk-bridge run
 //!   lk-bridge status
 //!   lk-bridge unpair
+//!   lk-bridge setup [--check]
 
 use clap::{Parser, Subcommand};
+use localkan_bridge_core::setup::{self, Event, State};
 use localkan_bridge_core::{config, runtime};
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(name = "lk-bridge", version, about = "Localkan local bridge (headless)")]
@@ -32,6 +36,25 @@ enum Cmd {
     Status,
     /// Forget the server and delete the device token.
     Unpair,
+    /// Install what the bridge needs on this machine (Git, Node.js, Orca…; not the agent
+    /// CLIs), skipping what is already installed.
+    Setup {
+        /// Only list what is installed and what is missing.
+        #[arg(long)]
+        check: bool,
+    },
+}
+
+fn print_items(items: &[setup::Item]) {
+    for i in items {
+        let mark = match i.state {
+            State::Ok => "✓",
+            State::Missing => "✗",
+            State::Setup => "!",
+        };
+        let optional = if i.required { "" } else { " (tùy chọn)" };
+        println!("{mark} {}{optional}: {}", i.label, i.detail.as_deref().unwrap_or(i.purpose));
+    }
 }
 
 #[tokio::main]
@@ -72,6 +95,24 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Unpair => {
             config::unpair().await?;
             println!("Đã gỡ ghép nối.");
+        }
+        Cmd::Setup { check } => {
+            print_items(&setup::check().await);
+            if check {
+                return Ok(());
+            }
+            let progress = setup::Progress::new(Arc::new(AtomicBool::new(false)), |e| match e {
+                Event::Step(i) => println!("\n▸ Cài {}…", i.label),
+                Event::Line(l) => println!("  {l}"),
+                Event::Done(i, Ok(())) => println!("✓ Đã cài {}", i.label),
+                Event::Done(i, Err(e)) => println!("✗ {}: {e}", i.label),
+            });
+            if setup::install_missing(None, &progress).await.is_empty() {
+                println!("\nKhông còn gì cần cài.");
+            } else {
+                println!();
+                print_items(&setup::check().await);
+            }
         }
     }
     Ok(())

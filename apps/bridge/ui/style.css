@@ -27,6 +27,10 @@
 * {
   box-sizing: border-box;
 }
+/* `.card` and friends set a display; `hidden` must still win. */
+[hidden] {
+  display: none !important;
+}
 body {
   margin: 0;
   padding: 18px;
@@ -141,4 +145,81 @@ button.danger {
 }
 button:disabled {
   opacity: 0.5;
+}
+button.small {
+  padding: 4px 10px;
+  font-size: 12.5px;
+}
+.card + .card {
+  margin-top: 12px;
+}
+.spacer {
+  flex: 1;
+}
+
+/* Machine setup */
+.setup-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.setup-head h2 {
+  margin: 0;
+}
+#setup-body {
+  display: grid;
+  gap: 10px;
+}
+#setup-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.setup-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.setup-item:first-child {
+  border-top: none;
+}
+.setup-item .state-mark {
+  font-weight: 700;
+  text-align: center;
+}
+.setup-item.ok .state-mark {
+  color: var(--ok);
+}
+.setup-item.missing .state-mark {
+  color: var(--danger);
+}
+.setup-item.setup .state-mark,
+.setup-item.current .state-mark {
+  color: var(--warn);
+}
+.setup-item .title {
+  font-weight: 500;
+}
+.setup-item .detail {
+  overflow-wrap: anywhere;
+}
+.setup-form {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+.setup-log {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font: 11.5px/1.4 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

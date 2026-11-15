@@ -3,9 +3,11 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use localkan_bridge_core::setup::{self, Event};
 use localkan_bridge_core::{config, runtime};
 use serde::Serialize;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, State, WindowEvent};
@@ -13,6 +15,18 @@ use tauri::{AppHandle, Manager, State, WindowEvent};
 struct AppState {
     status: runtime::SharedStatus,
     task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+    setup: Arc<Mutex<SetupProgress>>,
+    setup_cancel: Arc<AtomicBool>,
+}
+
+/// The running (or last) install of missing tools, polled by the window.
+#[derive(Default, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SetupProgress {
+    running: bool,
+    /// Item being installed now.
+    current: Option<String>,
+    log: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -85,6 +99,92 @@ fn reconnect(state: State<AppState>) {
 }
 
 #[tauri::command]
+async fn setup_check() -> Vec<setup::Item> {
+    setup::check().await
+}
+
+#[tauri::command]
+fn setup_progress(state: State<AppState>) -> SetupProgress {
+    state.setup.lock().unwrap().clone()
+}
+
+/// Install the missing tools (all of them, or only `ids`) in the background.
+#[tauri::command]
+fn setup_install(app: AppHandle, state: State<AppState>, ids: Option<Vec<String>>) -> Result<(), String> {
+    {
+        let mut s = state.setup.lock().unwrap();
+        if s.running {
+            return Err("Đang cài, chờ xong lượt này đã.".into());
+        }
+        *s = SetupProgress { running: true, ..Default::default() };
+    }
+    state.setup_cancel.store(false, Ordering::Relaxed);
+    let shared = state.setup.clone();
+    let cancel = state.setup_cancel.clone();
+    tauri::async_runtime::spawn(async move {
+        let log = shared.clone();
+        let progress = setup::Progress::new(cancel, move |e| {
+            let mut s = log.lock().unwrap();
+            match e {
+                Event::Step(i) => {
+                    s.current = Some(i.id.to_string());
+                    s.log.push(format!("▸ Cài {}…", i.label));
+                }
+                Event::Line(l) => s.log.push(l),
+                Event::Done(i, r) => {
+                    s.current = None;
+                    s.log.push(match r {
+                        Ok(()) => format!("✓ Đã cài {}", i.label),
+                        Err(e) => format!("✗ {}: {e}", i.label),
+                    });
+                }
+            }
+            let n = s.log.len();
+            if n > 400 {
+                s.log.drain(..n - 400);
+            }
+        });
+        let results = setup::install_missing(ids.as_deref(), &progress).await;
+        // The bridge looks for Orca when it starts: restart it to use a freshly installed one.
+        if results.iter().any(|(id, r)| id == "orca" && r.is_ok()) {
+            start(&app.state::<AppState>());
+        }
+        let mut s = shared.lock().unwrap();
+        if results.is_empty() {
+            s.log.push("Không còn gì cần cài.".into());
+        }
+        s.running = false;
+        s.current = None;
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn setup_cancel(state: State<AppState>) {
+    state.setup_cancel.store(true, Ordering::Relaxed);
+}
+
+#[tauri::command]
+async fn setup_gh_login() -> Result<(), String> {
+    setup::open_gh_login().await.map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+async fn setup_ngrok_token(token: String) -> Result<(), String> {
+    setup::set_ngrok_token(&token).await.map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+fn setup_ngrok_dashboard() -> Result<(), String> {
+    open_url("https://dashboard.ngrok.com/get-started/your-authtoken")
+}
+
+#[tauri::command]
+async fn setup_identity(name: String, email: String) -> Result<(), String> {
+    setup::set_identity(&name, &email).await.map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
 fn open_board() -> Result<(), String> {
     let url = config::load().server_url.ok_or("Chưa ghép nối với server nào.")?;
     open_url(&url)
@@ -111,8 +211,27 @@ fn main() {
     tracing_subscriber::fmt().with_target(false).init();
 
     tauri::Builder::default()
-        .manage(AppState { status: runtime::new_status(), task: Mutex::new(None) })
-        .invoke_handler(tauri::generate_handler![get_status, pair, unpair, reconnect, open_board])
+        .manage(AppState {
+            status: runtime::new_status(),
+            task: Mutex::new(None),
+            setup: Arc::new(Mutex::new(SetupProgress::default())),
+            setup_cancel: Arc::new(AtomicBool::new(false)),
+        })
+        .invoke_handler(tauri::generate_handler![
+            get_status,
+            pair,
+            unpair,
+            reconnect,
+            open_board,
+            setup_check,
+            setup_progress,
+            setup_install,
+            setup_cancel,
+            setup_gh_login,
+            setup_ngrok_token,
+            setup_ngrok_dashboard,
+            setup_identity
+        ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -141,6 +260,14 @@ fn main() {
             if cfg.server_url.is_none() || cfg.device_id.is_none() {
                 show_window(app.handle());
             }
+            // A new machine: open the window when something the bridge needs is missing, so
+            // the "Môi trường máy" list (with its install button) is the first thing seen.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if setup::check().await.iter().any(|i| i.required && i.state != setup::State::Ok) {
+                    show_window(&handle);
+                }
+            });
             Ok(())
         })
         .on_window_event(|window, event| {

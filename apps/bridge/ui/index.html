@@ -15,6 +15,29 @@
       </div>
     </header>
 
+    <section id="setup" class="card">
+      <div class="setup-head">
+        <h2>Môi trường máy</h2>
+        <span id="setup-summary" class="muted small">Đang kiểm tra…</span>
+        <span class="spacer"></span>
+        <button id="setup-toggle" class="small" type="button">Chi tiết</button>
+      </div>
+      <div id="setup-body" hidden>
+        <p class="muted small">
+          Những thứ bridge cần trên máy này (không gồm agent CLI). Thứ nào đã có thì bỏ qua; cài Homebrew sẽ hỏi
+          mật khẩu máy, Command Line Tools mở hộp thoại của Apple.
+        </p>
+        <ul id="setup-list"></ul>
+        <div class="row">
+          <button id="setup-all" class="primary" type="button" hidden>Cài những mục còn thiếu</button>
+          <button id="setup-cancel" class="danger" type="button" hidden>Dừng cài</button>
+          <span class="spacer"></span>
+          <button id="setup-recheck" class="small" type="button">Kiểm tra lại</button>
+        </div>
+        <pre id="setup-log" class="setup-log" hidden></pre>
+      </div>
+    </section>
+
     <section id="status" class="card" hidden>
       <div class="row">
         <span id="dot" class="dot"></span>
