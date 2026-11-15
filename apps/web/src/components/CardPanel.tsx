@@ -5,6 +5,7 @@ import {
   AGENTS,
   type AgentId,
   type Card,
+  CARD_MODES,
   CARD_STATUS_LABELS,
   type CardMode,
   type DiffResult,
@@ -17,7 +18,9 @@ import {
 } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { useAgentModels, useNarrow, useScrollLock, type AgentModels } from '../hooks.ts';
+import { MODE_LABELS, MODE_TAGS } from '../modes.ts';
 import { agentText, readLastModel } from '../models.ts';
+import { PlanView } from './PlanView.tsx';
 import { ModelSelect } from './ModelSelect.tsx';
 import { Dialog } from './Dialog.tsx';
 import { DiffView } from './DiffView.tsx';
@@ -109,7 +112,7 @@ export function CardPanel({
               <span className={`agent agent-${card.agent}`} title={agentText(card, models)}>
                 {agentText(card, models)}
               </span>
-              {card.mode === 'ask' && <span className="tag">Hỏi</span>}
+              {MODE_TAGS[card.mode] && <span className="tag">{MODE_TAGS[card.mode]}</span>}
               {card.branch && <code>{card.branch}</code>}
               {card.prUrl && (
                 <a href={card.prUrl} target="_blank" rel="noreferrer">
@@ -191,7 +194,7 @@ export function CardPanel({
               disabled={t !== 'task' && (!started || (card.status === 'done' && (t === 'preview' || t === 'terminal')))}
               title={card.status === 'done' && (t === 'preview' || t === 'terminal') ? 'Việc đã xong: worktree và terminal đã được dọn' : undefined}
             >
-              {{ task: 'Nhiệm vụ', log: 'Log', diff: 'Diff', preview: 'Xem trước', terminal: 'Terminal' }[t]}
+              {{ task: 'Nhiệm vụ', log: 'Log', diff: card.mode === 'plan' ? 'Kế hoạch' : 'Diff', preview: 'Xem trước', terminal: 'Terminal' }[t]}
               {t === 'preview' && card.preview?.status === 'running' && <span className="dot ok tab-dot" aria-label="đang chạy" />}
             </button>
           ))}
@@ -457,8 +460,11 @@ function TaskTab({ card, cards, models, toasts }: { card: Card; cards: Card[]; m
         </select>
         <ModelSelect agent={agent} models={models} value={model} onChange={setModel} />
         <select value={mode} onChange={(e) => setMode(e.target.value as CardMode)} aria-label="Chế độ">
-          <option value="act">Làm (sửa code)</option>
-          <option value="ask">Hỏi (chỉ đọc)</option>
+          {CARD_MODES.map((m) => (
+            <option key={m} value={m}>
+              {MODE_LABELS[m]}
+            </option>
+          ))}
         </select>
       </div>
       <button
@@ -532,6 +538,19 @@ function ReviewTab({
 
   const multi = card.repos.length > 0;
   const prFlow = !multi && (project.git.flow === 'pr' || !!card.pr);
+  if (card.mode === 'plan') {
+    return (
+      <div className="review">
+        <div className="row">
+          <button className="btn ghost small" onClick={load}>
+            <RefreshCw /> Tải lại kế hoạch
+          </button>
+        </div>
+        {error && <p className="error-text">{error}</p>}
+        <PlanView card={card} project={project} diff={diff} toasts={toasts} />
+      </div>
+    );
+  }
   return (
     <div className="review">
       {multi && <ReposPanel card={card} toasts={toasts} />}
@@ -580,6 +599,8 @@ function ReviewBar({
   const [writing, setWriting] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const note = comments.length ? ` (${comments.length} nhận xét)` : '';
+  // Questions and plans change no code: "done" just closes the card.
+  const readOnly = card.mode === 'ask' || card.mode === 'plan';
   return (
     <div className="review-bar">
       <textarea
@@ -588,7 +609,15 @@ function ReviewBar({
         onFocus={() => setWriting(true)}
         onBlur={() => setWriting(false)}
         rows={writing || feedback ? 3 : 1}
-        placeholder={comments.length ? 'Nhận xét chung (tùy chọn)…' : 'Cần agent sửa gì thêm?'}
+        placeholder={
+          comments.length
+            ? 'Nhận xét chung (tùy chọn)…'
+            : card.mode === 'plan'
+              ? 'Muốn đổi gì trong kế hoạch?'
+              : card.mode === 'ask'
+                ? 'Hỏi thêm…'
+                : 'Cần agent sửa gì thêm?'
+        }
         title="Có thể bấm vào một dòng trong tab Diff để nhận xét ngay dòng đó"
         aria-label="Yêu cầu sửa"
       />
@@ -610,9 +639,22 @@ function ReviewBar({
           Yêu cầu sửa{note}
         </button>
         <div className="spacer" />
-        <button className="btn primary" disabled={busy} onClick={() => setFinishing(true)}>
-          <Check /> Hoàn tất…
-        </button>
+        {readOnly ? (
+          <button
+            className="btn primary"
+            disabled={busy}
+            onClick={() =>
+              confirm(card.mode === 'plan' ? 'Đóng thẻ kế hoạch? Các việc đã nhập vẫn ở To Do.' : 'Đóng thẻ này?') &&
+              run(() => api.finish(card.id, 'discard', ''), card.mode === 'plan' ? 'Đã đóng kế hoạch.' : 'Đã đóng thẻ.')
+            }
+          >
+            <Check /> Xong
+          </button>
+        ) : (
+          <button className="btn primary" disabled={busy} onClick={() => setFinishing(true)}>
+            <Check /> Hoàn tất…
+          </button>
+        )}
       </div>
       {finishing && (
         <Dialog title="Hoàn tất thẻ" onClose={() => setFinishing(false)}>

@@ -1,4 +1,6 @@
 import type {
+  AgentId,
+  PlanTask,
   GitSettings,
   PrInfo,
   RepoInfo,
@@ -66,6 +68,9 @@ export const api = {
     call<Card>('POST', `/projects/${projectId}/cards`, c),
   updateCard: (id: string, patch: Partial<Pick<Card, 'title' | 'prompt' | 'agent' | 'model' | 'mode' | 'position' | 'parentCardId' | 'autoPreview'>>) =>
     call<Card>('PATCH', `/cards/${id}`, patch),
+  /** Planning card: create a To Do card for each chosen task, in order. */
+  importPlan: (id: string, tasks: PlanTask[], agent: AgentId, model: string | null) =>
+    call<{ created: number }>('POST', `/cards/${id}/plan/import`, { tasks, agent, model }),
   previewStart: (id: string, tunnel: boolean) => call<PreviewInfo>('POST', `/cards/${id}/preview`, { tunnel }),
   previewStop: (id: string) => call('DELETE', `/cards/${id}/preview`),
   screenshots: (id: string, path: string) => call<{ shots: Screenshot[] }>('POST', `/cards/${id}/screenshots`, { path }),

@@ -2341,7 +2341,7 @@ impl Engine {
     async fn settle(&self, card: &CardRt, ok: bool, summary: Option<String>) {
         // PR flow: push the work and open (or update) the PR so CI runs while you review.
         let publish = ok
-            && card.mode != "ask"
+            && !read_only(&card.mode)
             && if card.children.is_empty() {
                 card.git.pr_flow() && (card.git.auto_draft_pr || card.pr.is_some())
             } else {
@@ -2729,10 +2729,30 @@ const COMMON_RULES: &str = "Rules from Localkan (the reviewer's Kanban board):
 - To open or check web pages, use Orca's built-in browser through the `orca` CLI. It is shared with the reviewer and keeps their sign-ins: `orca tab create --url <url> --json` (keep the browserPageId), then `orca snapshot --page <id>`, `orca click --element @e1 --page <id>`, `orca fill --element @e2 --value <text> --page <id>`, `orca screenshot --page <id>`, `orca eval --expression <js> --page <id>`; `orca skills get orca-cli` has the full browser reference. Do not start a separate browser (Playwright, Puppeteer, Chrome DevTools, headless Chrome) for pages that need a signed-in session: it would not have the sign-in.
 - Never type passwords, one-time codes or other credentials, and never look for them in files, env vars or keychains, except test accounts for this project's own local app that the task or project memory gives you. When a page needs a sign-in, keep it open in its Orca tab and run the `orca orchestration ask` command from your instructions with `--timeout-ms 3600000` and a question that starts with `[LOGIN]`, then the page URL, then which site or account is needed (for example `[LOGIN] https://admin.example.com/login needs an admin account`). The reviewer signs in remotely in that tab. When the reply arrives, reload the page and continue. If the ask times out, resume it with its message id instead of asking again.
 - Before you report done, write a handoff note to `.localkan/handoff.md` (Markdown, at most about 300 words): what you changed and why, decisions you made, anything the next task must know (gotchas, follow-ups), and the main files touched. Later tasks on this project read it. Git ignores it.
-- When finished, send worker_done exactly as instructed, with a short summary of what you changed and how you verified it.";
+- When finished, send worker_done exactly as instructed, with a short summary of what you changed and how you verified it.
+- The reviewer reads Vietnamese: write everything meant for them in Vietnamese (the worker_done summary, `.localkan/handoff.md`, questions you ask, answer and plan files). Keep code, identifiers, file paths and commands as they are.";
 
 const ASK_RULES: &str = "- This card is a QUESTION, not a change request. Do not modify any project files.
 - Write your complete answer in Markdown to `.localkan/answer.md` (create the folder). That file is how the reviewer reads your answer.";
+
+const PLAN_RULES: &str = "- This card is PLANNING, not implementation. Do not modify project files; read the code, docs and project notes as much as you need to plan well.
+- First make sure you understand what the reviewer wants. When the goal, scope, constraints or priorities are unclear, ask with the `orca orchestration ask` command from your instructions (with `--timeout-ms 3600000`): one focused question at a time, with concrete options when that helps, then wait for the reply. Ask only what changes the plan; skip what the code already answers. If an ask times out, resume it with its message id instead of asking again.
+- Then write the plan to `.localkan/plan.json` (create the folder) as UTF-8 JSON in exactly this shape: {\"goal\": \"one or two sentences\", \"tasks\": [{\"title\": \"short imperative title, at most 70 characters\", \"prompt\": \"what to do, where in the code, constraints, and how to check it is done\"}]}. No other keys, no Markdown around it.
+- Each task becomes one Kanban card that one agent finishes in its own worktree and the reviewer reviews on its own. List them in the order they should be done, and say in a task's prompt when it builds on an earlier task. Usually 3 to 10 tasks.
+- On a follow-up, update `.localkan/plan.json` as asked (ask again if needed), then report done again.";
+
+/// Cards that only read the project: no commit, push or pull request for them.
+fn read_only(mode: &str) -> bool {
+    matches!(mode, "ask" | "plan")
+}
+
+fn mode_rules(mode: &str) -> Option<&'static str> {
+    match mode {
+        "ask" => Some(ASK_RULES),
+        "plan" => Some(PLAN_RULES),
+        _ => None,
+    }
+}
 
 pub fn compose_spec(title: &str, prompt: &str, mode: &str, images: &[String], context: &str) -> String {
     let mut out = format!("Task: {title}\n");
@@ -2755,8 +2775,8 @@ pub fn compose_spec(title: &str, prompt: &str, mode: &str, images: &[String], co
         ));
     }
     out.push_str(&format!("\n{COMMON_RULES}\n"));
-    if mode == "ask" {
-        out.push_str(&format!("{ASK_RULES}\n"));
+    if let Some(rules) = mode_rules(mode) {
+        out.push_str(&format!("{rules}\n"));
     }
     out
 }
@@ -2766,8 +2786,8 @@ pub fn compose_followup(title: &str, text: &str, mode: &str) -> String {
         "Follow-up on the task \"{title}\" in this same worktree. Your earlier changes are still here.\n\n{}\n\n{COMMON_RULES}\n",
         text.trim()
     );
-    if mode == "ask" {
-        out.push_str(&format!("{ASK_RULES}\n"));
+    if let Some(rules) = mode_rules(mode) {
+        out.push_str(&format!("{rules}\n"));
     }
     out
 }
@@ -2775,6 +2795,17 @@ pub fn compose_followup(title: &str, text: &str, mode: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spec_rules_follow_the_mode() {
+        let act = compose_spec("T", "do it", "act", &[], "");
+        assert!(act.contains("in Vietnamese") && !act.contains(".localkan/plan.json") && !act.contains(".localkan/answer.md"));
+        let plan = compose_spec("T", "goal", "plan", &[], "");
+        assert!(plan.contains(".localkan/plan.json") && plan.contains("orca orchestration ask"));
+        assert!(compose_followup("T", "more", "plan").contains(".localkan/plan.json"));
+        assert!(compose_spec("T", "q", "ask", &[], "").contains(".localkan/answer.md"));
+        assert!(read_only("ask") && read_only("plan") && !read_only("act"));
+    }
 
     #[test]
     fn log_filter_drops_tui_noise() {

@@ -397,7 +397,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     if (!AGENTS.includes(agent as AgentId)) throw new HttpError(400, 'Agent không hợp lệ.');
     return agent as AgentId;
   };
-  const parseMode = (mode: unknown): CardMode => (mode === 'ask' ? 'ask' : 'act');
+  const parseMode = (mode: unknown): CardMode => (mode === 'ask' || mode === 'plan' ? mode : 'act');
   // The id ends up in the agent's launch command on the bridge: a strict character set.
   const parseModel = (model: unknown): string | null => {
     if (model === null || model === undefined || model === '') return null;
@@ -467,6 +467,38 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       autoPreview: b.autoPreview === true,
     });
     return c.json(pushCard(c.get('userId'), await store.getCard(id)));
+  });
+
+  // Planning card: turn the tasks the reviewer kept into To Do cards, in the plan's order.
+  api.post('/cards/:id/plan/import', async (c) => {
+    const { card, userId } = await ownCard(c, c.req.param('id'));
+    if (card.mode !== 'plan') throw new HttpError(400, 'Thẻ này không phải thẻ lập kế hoạch.');
+    const b = await body<{ tasks?: { title?: unknown; prompt?: unknown }[]; agent?: string; model?: string | null }>(c);
+    const tasks = (Array.isArray(b.tasks) ? b.tasks : [])
+      .map((t) => ({ title: String(t?.title ?? '').trim().slice(0, 200), prompt: String(t?.prompt ?? '').trim().slice(0, 20000) }))
+      .filter((t) => t.title);
+    if (!tasks.length) throw new HttpError(400, 'Chưa chọn việc nào để nhập.');
+    if (tasks.length > 50) throw new HttpError(400, 'Mỗi lần nhập tối đa 50 việc.');
+    const agent = parseAgent(b.agent ?? 'claude');
+    const model = parseModel(b.model);
+    let position = await store.maxTodoPosition(card.projectId);
+    for (const t of tasks) {
+      const id = randomUUID();
+      await store.createCard({
+        id,
+        projectId: card.projectId,
+        title: t.title,
+        prompt: t.prompt,
+        agent,
+        model,
+        mode: 'act',
+        position: ++position,
+        parentCardId: null,
+      });
+      pushCard(userId, await store.getCard(id));
+    }
+    pushCard(userId, await store.updateCard(card.id, { planImport: { at: new Date().toISOString(), count: tasks.length } }));
+    return c.json({ created: tasks.length });
   });
 
   api.patch('/cards/:id', async (c) => {

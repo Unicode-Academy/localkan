@@ -27,6 +27,21 @@ Web UI (React)  ⇄  Server (Node: API + WebSocket hub, MongoDB metadata)  ⇄  
 | **Review** | Xem diff, bấm vào dòng để nhận xét, "Yêu cầu sửa". | Agent gửi `worker_done` → thẻ tự sang Review. "Yêu cầu sửa" giao tiếp việc cho chính terminal agent cũ trong cùng worktree. |
 | **Done** | Chọn: Commit vào nhánh / Tạo PR / Merge vào nhánh gốc / Hủy. | Commit, `git push` + `gh pr create`, `git merge --no-ff`, hoặc xóa nhánh; sau đó dọn worktree bằng `orca worktree rm`. |
 
+## Lập kế hoạch
+
+Khi chưa rõ cần làm những việc gì, bấm **Lập kế hoạch** ở cột To Do (trên điện thoại: Việc mới → Kiểu việc → Lập kế hoạch) và nói điều bạn muốn.
+
+1. **Agent tìm hiểu.** Agent đọc code, không sửa file nào.
+2. **Agent hỏi lại khi cần.** Nếu mục tiêu, phạm vi hay ưu tiên chưa rõ, nó hỏi lại từng câu. Thẻ sang "Cần bạn xử lý" và bạn trả lời ngay trên thẻ.
+3. **Agent lập danh sách việc.** Danh sách được ghi vào `.localkan/plan.json`, mỗi việc gồm tiêu đề và mô tả đủ để một agent khác làm.
+4. **Bạn duyệt.** Tab **Kế hoạch** hiện danh sách việc. Bỏ chọn việc không cần, chọn agent và model, rồi bấm **Nhập N việc vào To Do**: mỗi việc thành một thẻ, đúng thứ tự.
+5. **Sửa kế hoạch nếu cần.** Dùng **Yêu cầu sửa**, ví dụ "tách việc 2 làm hai", để agent cập nhật danh sách.
+6. **Đóng thẻ.** Bấm **Xong** để đóng thẻ kế hoạch.
+
+Thẻ kế hoạch ghi lại lần nhập gần nhất, nên nhập lần nữa sẽ được hỏi lại trước khi tạo thêm thẻ.
+
+Agent viết báo cáo, ghi chú bàn giao, câu hỏi, câu trả lời và kế hoạch bằng tiếng Việt; code và tên file giữ nguyên.
+
 ## Ngữ cảnh giữa các thẻ
 
 Mỗi thẻ chạy một phiên agent mới. Ngữ cảnh được chuyển giữa các thẻ qua các file Markdown trong thư mục `.localkan/` của repo gốc, trên máy chạy bridge. Thư mục này được thêm vào `.git/info/exclude` nên không bị commit, và server không lưu gì.

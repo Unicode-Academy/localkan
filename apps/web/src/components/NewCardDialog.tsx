@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react';
-import { AGENT_LABELS, AGENTS, type AgentId, type Card, type CardMode } from '@localkan/protocol';
+import { AGENT_LABELS, AGENTS, CARD_MODES, type AgentId, type Card, type CardMode } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { useAgentModels } from '../hooks.ts';
+import { MODE_LABELS, MODE_PROMPT } from '../modes.ts';
 import { readLastAgent, readLastModel, saveLastChoice } from '../models.ts';
+import { deriveTitle } from '../text.ts';
 import { Dialog } from './Dialog.tsx';
 import { ImageAttachments, imagesFromClipboard, acceptImages } from './ImageAttachments.tsx';
 import { ModelSelect } from './ModelSelect.tsx';
@@ -14,6 +16,7 @@ export function NewCardDialog({
   projectId,
   deviceId,
   cards,
+  initialMode = 'act',
   onClose,
   toasts,
 }: {
@@ -21,6 +24,7 @@ export function NewCardDialog({
   /** Machine the board runs on: its agents' model lists. */
   deviceId: string;
   cards: Card[];
+  initialMode?: CardMode;
   onClose: () => void;
   toasts: ToastApi;
 }) {
@@ -30,16 +34,17 @@ export function NewCardDialog({
   const models = useAgentModels(deviceId);
   const [agent, setAgent] = useState<AgentId>(readLastAgent);
   const [model, setModel] = useState<string | null>(() => readLastModel(agent, models));
-  const [mode, setMode] = useState<CardMode>('act');
+  const [mode, setMode] = useState<CardMode>(initialMode);
   const [images, setImages] = useState<File[]>([]);
   const [parentCardId, setParentCardId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const finalTitle = title.trim() || prompt.trim().split('\n')[0].slice(0, 80);
+    // The title is optional: without one, the first sentence of the description is used.
+    const finalTitle = title.trim() || deriveTitle(prompt);
     if (!finalTitle) {
-      toasts.error('Hãy nhập tiêu đề hoặc mô tả.');
+      toasts.error('Hãy nhập mô tả.');
       return;
     }
     setBusy(true);
@@ -62,7 +67,7 @@ export function NewCardDialog({
   };
 
   return (
-    <Dialog title="Thẻ mới" onClose={onClose}>
+    <Dialog title={initialMode === 'plan' ? 'Lập kế hoạch' : 'Thẻ mới'} onClose={onClose}>
       <form
         className="form"
         onSubmit={submit}
@@ -75,13 +80,9 @@ export function NewCardDialog({
           if (error) toasts.error(error);
         }}
       >
-        <label>
-          Tiêu đề
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ví dụ: Thêm trang đăng nhập" autoFocus />
-        </label>
         <div className="field">
           <div className="field-head">
-            <span>Mô tả cho agent</span>
+            <span>{MODE_PROMPT[mode].label}</span>
             <VoiceButton
               onFinal={(t) => setPrompt((p) => appendPhrase(p, t))}
               onInterim={setInterim}
@@ -91,11 +92,18 @@ export function NewCardDialog({
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Làm gì, ở đâu, ràng buộc nào, kiểm tra thế nào là xong… Có thể bấm nút Nói để đọc."
+            placeholder={MODE_PROMPT[mode].placeholder}
             rows={7}
+            autoFocus
           />
           {interim && <p className="interim">{interim}</p>}
         </div>
+        <label>
+          <span>
+            Tiêu đề <span className="muted small">· không bắt buộc</span>
+          </span>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Bỏ trống thì lấy câu đầu của mô tả" />
+        </label>
         <div className="field">
           <span className="field-label">Ảnh minh họa</span>
           <ImageAttachments
@@ -124,8 +132,11 @@ export function NewCardDialog({
           </select>
           <ModelSelect agent={agent} models={models} value={model} onChange={setModel} />
           <select value={mode} onChange={(e) => setMode(e.target.value as CardMode)} aria-label="Chế độ">
-            <option value="act">Làm (sửa code)</option>
-            <option value="ask">Hỏi (chỉ đọc)</option>
+            {CARD_MODES.map((m) => (
+              <option key={m} value={m}>
+                {MODE_LABELS[m]}
+              </option>
+            ))}
           </select>
         </div>
         <div className="row">

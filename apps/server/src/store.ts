@@ -92,6 +92,7 @@ interface CardDoc {
   parentCardId: string | null;
   preview: PreviewInfo | null;
   autoPreview?: boolean;
+  planImport?: { at: string; count: number } | null;
   pr?: PrInfo | null;
   repos?: CardRepo[];
   attachments: Attachment[];
@@ -165,6 +166,7 @@ export function toCard(c: CardDoc): Card {
     parentCardId: c.parentCardId ?? null,
     preview: c.preview ?? null,
     autoPreview: c.autoPreview ?? false,
+    planImport: c.planImport ?? null,
     pr: c.pr ?? null,
     repos: c.repos ?? [],
     attachments: c.attachments ?? [],

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SendHorizontal, X } from 'lucide-react';
-import { AGENT_LABELS, AGENTS, type AgentId, type Card, type Project } from '@localkan/protocol';
+import { AGENT_LABELS, AGENTS, type AgentId, type Card, type CardMode, type Project } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { ImageAttachments } from '../components/ImageAttachments.tsx';
 import { ModelSelect } from '../components/ModelSelect.tsx';
@@ -9,6 +9,20 @@ import type { ToastApi } from '../components/Toasts.tsx';
 import { appendPhrase, VoiceButton } from '../components/VoiceButton.tsx';
 import { useAgentModels } from '../hooks.ts';
 import { agentText, readLastAgent, readLastModel, saveLastChoice } from '../models.ts';
+import { MODE_PROMPT } from '../modes.ts';
+import { deriveTitle } from '../text.ts';
+
+const EXAMPLES: Record<CardMode, string> = {
+  act: 'Ví dụ: Đổi nút “Đặt ngay” sang màu cam và gửi SMS xác nhận sau mỗi lần đặt.',
+  ask: 'Ví dụ: Luồng thanh toán xử lý mã giảm giá ở đâu?',
+  plan: 'Ví dụ: Thêm chương trình giới thiệu bạn bè, người giới thiệu được thưởng, có chống gian lận.',
+};
+
+const KINDS: { mode: CardMode; label: string }[] = [
+  { mode: 'act', label: 'Sửa code' },
+  { mode: 'ask', label: 'Chỉ hỏi' },
+  { mode: 'plan', label: 'Lập kế hoạch' },
+];
 
 const TEMPLATES: { label: string; text: string }[] = [
   {
@@ -61,7 +75,7 @@ export function NewTask({
   const [interim, setInterim] = useState('');
   const [images, setImages] = useState<File[]>([]);
   const [autoPreview, setAutoPreview] = useState(true);
-  const [askOnly, setAskOnly] = useState(false);
+  const [mode, setMode] = useState<CardMode>('act');
   const [parentCardId, setParentCardId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -83,9 +97,9 @@ export function NewTask({
         prompt: text,
         agent,
         model,
-        mode: askOnly ? 'ask' : 'act',
+        mode,
         parentCardId,
-        autoPreview: autoPreview && !askOnly,
+        autoPreview: autoPreview && mode === 'act',
       });
       if (images.length) {
         await api.uploadAttachments(card.id, images).catch((err) => toasts.error(`Chưa tải được ảnh: ${(err as Error).message}`));
@@ -151,13 +165,25 @@ export function NewTask({
         </section>
 
         <section>
-          <div className="m-label">Nói hoặc gõ yêu cầu</div>
+          <div className="m-label">Kiểu việc</div>
+          <div className="m-segment three" role="radiogroup" aria-label="Kiểu việc">
+            {KINDS.map((k) => (
+              <button key={k.mode} role="radio" aria-checked={mode === k.mode} className={mode === k.mode ? 'on' : ''} onClick={() => setMode(k.mode)}>
+                {k.label}
+              </button>
+            ))}
+          </div>
+          {mode !== 'act' && <p className="m-note">{MODE_PROMPT[mode].placeholder}</p>}
+        </section>
+
+        <section>
+          <div className="m-label">{mode === 'plan' ? MODE_PROMPT.plan.label : 'Nói hoặc gõ yêu cầu'}</div>
           <textarea
             className="m-textarea"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             rows={5}
-            placeholder="Ví dụ: Đổi nút “Đặt ngay” sang màu cam và gửi SMS xác nhận sau mỗi lần đặt."
+            placeholder={EXAMPLES[mode]}
           />
           {interim && <p className="interim">{interim}</p>}
           <VoiceButton big onFinal={(t) => setPrompt((p) => appendPhrase(p, t))} onInterim={setInterim} onError={toasts.error} />
@@ -169,16 +195,18 @@ export function NewTask({
           />
         </section>
 
-        <section>
-          <div className="m-label">Mẫu nhanh</div>
-          <div className="m-templates">
-            {TEMPLATES.map((t) => (
-              <button key={t.label} className="m-template" onClick={() => setPrompt((p) => (p.trim() ? `${p.trim()}\n${t.text}` : t.text))}>
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </section>
+        {mode === 'act' && (
+          <section>
+            <div className="m-label">Mẫu nhanh</div>
+            <div className="m-templates">
+              {TEMPLATES.map((t) => (
+                <button key={t.label} className="m-template" onClick={() => setPrompt((p) => (p.trim() ? `${p.trim()}\n${t.text}` : t.text))}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section>
           <div className="m-label">Khi xong</div>
@@ -188,14 +216,7 @@ export function NewTask({
                 Tự chạy xem trước
                 <small>Có link mở được trên điện thoại ngay khi agent xong</small>
               </span>
-              <input type="checkbox" role="switch" checked={autoPreview && !askOnly} disabled={askOnly} onChange={(e) => setAutoPreview(e.target.checked)} />
-            </label>
-            <label className="m-toggle">
-              <span>
-                Chỉ hỏi, không sửa code
-                <small>Agent trả lời câu hỏi về dự án, không đổi file nào</small>
-              </span>
-              <input type="checkbox" role="switch" checked={askOnly} onChange={(e) => setAskOnly(e.target.checked)} />
+              <input type="checkbox" role="switch" checked={autoPreview && mode === 'act'} disabled={mode !== 'act'} onChange={(e) => setAutoPreview(e.target.checked)} />
             </label>
           </div>
           {boardCards.some((c) => c.branch) && (
@@ -220,14 +241,4 @@ export function NewTask({
       </div>
     </div>
   );
-}
-
-/** A short card title from what was said: the first sentence, cut at a word boundary. */
-export function deriveTitle(text: string, max = 70): string {
-  const first = text.trim().split('\n')[0].trim();
-  const sentence = first.split(/(?<=[.!?…])\s/)[0].replace(/[.!?…:]+$/, '').trim() || first;
-  if (sentence.length <= max) return sentence;
-  const cut = sentence.slice(0, max);
-  const space = cut.lastIndexOf(' ');
-  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[,;:\s]+$/, '')}…`;
 }

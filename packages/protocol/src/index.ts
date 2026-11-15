@@ -59,7 +59,25 @@ export type RunState =
   | 'failed'
   | 'stopped';
 
-export type CardMode = 'act' | 'ask';
+/** `act`: change code. `ask`: answer a question (no changes). `plan`: talk through what you
+ *  want, then write a list of tasks to import into To Do (no changes). */
+export type CardMode = 'act' | 'ask' | 'plan';
+export const CARD_MODES: readonly CardMode[] = ['act', 'ask', 'plan'];
+
+/** Where a planning agent writes its plan (in its worktree). */
+export const PLAN_FILE = '.localkan/plan.json';
+
+/** One task of a plan: becomes a To Do card on import. */
+export interface PlanTask {
+  title: string;
+  prompt: string;
+}
+
+/** The content of `PLAN_FILE`. */
+export interface Plan {
+  goal: string;
+  tasks: PlanTask[];
+}
 
 export interface WaitingInfo {
   /** `question`: the agent asked through Orca orchestration and expects a text answer.
@@ -197,6 +215,8 @@ export interface Card {
   preview: PreviewInfo | null;
   /** Start a preview (with a password-protected phone link) as soon as the agent reports done. */
   autoPreview: boolean;
+  /** Planning card: when its tasks were imported into To Do, and how many. */
+  planImport: { at: string; count: number } | null;
   attachments: Attachment[];
   createdAt: string;
   updatedAt: string;

@@ -1,15 +1,17 @@
 import { useState, type DragEvent } from 'react';
-import { CirclePause, CornerDownRight, Eye, Image, KeyRound } from 'lucide-react';
+import { CirclePause, CornerDownRight, Eye, Image, KeyRound, ListTodo, Plus } from 'lucide-react';
 import {
   type Card,
   CARD_STATUS_LABELS,
   CARD_STATUSES,
+  type CardMode,
   type CardStatus,
   type Device,
   type Project,
 } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { useAgentModels, type AgentModels } from '../hooks.ts';
+import { MODE_TAGS } from '../modes.ts';
 import { agentText } from '../models.ts';
 import { NewCardDialog } from './NewCardDialog.tsx';
 import { RunBadge } from './RunBadge.tsx';
@@ -41,7 +43,8 @@ export function Board({
 }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<CardStatus | null>(null);
-  const [creating, setCreating] = useState(false);
+  /** Kind of card being created (the plan shortcut opens the dialog in plan mode). */
+  const [creating, setCreating] = useState<CardMode | null>(null);
   const models = useAgentModels(project.deviceId);
 
   const byStatus = (s: CardStatus) => cards.filter((c) => c.status === s).sort((a, b) => a.position - b.position);
@@ -119,16 +122,34 @@ export function Board({
                   />
                 ))}
                 {status === 'todo' && (
-                  <button className="btn ghost add-card" onClick={() => setCreating(true)}>
-                    + Thêm thẻ
-                  </button>
+                  <div className="add-row">
+                    <button className="btn ghost add-card" onClick={() => setCreating('act')}>
+                      <Plus /> Thêm thẻ
+                    </button>
+                    <button
+                      className="btn ghost add-card"
+                      onClick={() => setCreating('plan')}
+                      title="Trao đổi với agent về điều bạn muốn; agent lập danh sách việc để bạn nhập vào To Do"
+                    >
+                      <ListTodo /> Lập kế hoạch
+                    </button>
+                  </div>
                 )}
               </div>
             </section>
           );
         })}
       </div>
-      {creating && <NewCardDialog projectId={project.id} deviceId={project.deviceId} cards={cards} onClose={() => setCreating(false)} toasts={toasts} />}
+      {creating && (
+        <NewCardDialog
+          projectId={project.id}
+          deviceId={project.deviceId}
+          cards={cards}
+          initialMode={creating}
+          onClose={() => setCreating(null)}
+          toasts={toasts}
+        />
+      )}
     </div>
   );
 }
@@ -176,7 +197,7 @@ function CardTile({
         <span className={`agent agent-${card.agent}`} title={agentText(card, models)}>
           {agentText(card, models)}
         </span>
-        {card.mode === 'ask' && <span className="tag">Hỏi</span>}
+        {MODE_TAGS[card.mode] && <span className="tag">{MODE_TAGS[card.mode]}</span>}
         {card.repos.length > 0 && (
           <span className="tag" title={card.repos.map((r) => r.name).join(', ')}>
             {card.repos.length} repo

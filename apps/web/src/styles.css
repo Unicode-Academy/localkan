@@ -565,6 +565,83 @@ label {
   justify-content: flex-start;
   color: var(--muted);
 }
+.add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+/* Plan (planning cards) */
+.plan {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.plan-goal {
+  margin: 0;
+  padding: 9px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.plan-tasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.plan-tasks li {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.plan-tasks li.off {
+  opacity: 0.5;
+}
+.plan-task-head {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-weight: 400;
+  cursor: pointer;
+}
+.plan-task-head input {
+  width: auto;
+  margin-top: 3px;
+}
+.plan-no {
+  color: var(--muted);
+}
+.plan-prompt {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0 0 0 24px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: left;
+  white-space: pre-wrap;
+  cursor: pointer;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.plan-prompt.open {
+  display: block;
+  -webkit-line-clamp: unset;
+}
+.plan-import {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
 .new-card {
   display: grid;
   gap: 8px;
@@ -1047,10 +1124,33 @@ label {
   color: var(--danger);
 }
 
-@media (max-width: 1280px) {
-  .email {
-    display: none;
-  }
+/* Account menu (top bar) */
+.account {
+  position: relative;
+}
+.account-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 25;
+  min-width: 220px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+.account-email {
+  padding: 6px 8px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+.account-item {
+  justify-content: flex-start;
+  width: 100%;
 }
 @media (max-width: 1140px) {
   .topbar-label {
@@ -1833,6 +1933,9 @@ label {
 .m-segment button.on {
   background: var(--text);
   color: var(--bg);
+}
+.m-segment.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .m-model {
   margin-top: 8px;

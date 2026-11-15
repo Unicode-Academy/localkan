@@ -12,6 +12,8 @@ import {
 import { api } from '../api.ts';
 import { useAgentModels, useScrollLock } from '../hooks.ts';
 import { agentText } from '../models.ts';
+import { addedText } from '../text.ts';
+import { PlanView } from '../components/PlanView.tsx';
 import { FinishBox, LogTab, WaitingBox, type Run } from '../components/CardPanel.tsx';
 import { DiffView } from '../components/DiffView.tsx';
 import { ciSummary, PrPanel, ReposPanel, shipPlan } from '../components/PrPanel.tsx';
@@ -209,8 +211,11 @@ function Review({
   useEffect(load, [load, card.updatedAt]);
 
   const isAsk = card.mode === 'ask';
+  const isPlan = card.mode === 'plan';
+  // Questions and plans change no code: no preview, PR or merge for them.
+  const readOnly = isAsk || isPlan;
   const multi = card.repos.length > 0;
-  const prFlow = !isAsk && !multi && (project.git.flow === 'pr' || !!card.pr);
+  const prFlow = !readOnly && !multi && (project.git.flow === 'pr' || !!card.pr);
   const base = card.pr?.base || project.git.baseBranch || project.baseRef || 'main';
   const mergePr = () => {
     const pr = card.pr;
@@ -235,12 +240,25 @@ function Review({
     <>
       {multi && <ReposPanel card={card} toasts={toasts} />}
       {prFlow && <PrPanel card={card} project={project} toasts={toasts} />}
-      {!isAsk && <PreviewBlock card={card} toasts={toasts} autoStart={startPreview} />}
+      {!readOnly && <PreviewBlock card={card} toasts={toasts} autoStart={startPreview} />}
 
       {card.summary && (
         <section className="m-section">
           <div className="m-section-head">Agent báo cáo</div>
           <p className="m-prewrap">{card.summary}</p>
+        </section>
+      )}
+
+      {isPlan && (
+        <section className="m-section">
+          <div className="m-section-head">
+            <span>Kế hoạch</span>
+            <button className="m-btn small" onClick={load} aria-label="Tải lại kế hoạch">
+              <RefreshCw />
+            </button>
+          </div>
+          {diffError && <p className="error-text small">{diffError}</p>}
+          <PlanView card={card} project={project} diff={diff} toasts={toasts} />
         </section>
       )}
 
@@ -251,52 +269,54 @@ function Review({
         </section>
       )}
 
-      <section className="m-section">
-        <div className="m-section-head">
-          <span>
-            {diff ? `${files.length} file thay đổi` : 'Thay đổi'}
-            {diff && files.length > 0 && (
-              <span className="muted small">
-                {' '}
-                · <span className="add">+{adds}</span> <span className="del">−{dels}</span>
-              </span>
-            )}
-          </span>
-          <button className="m-btn small" onClick={load} aria-label="Tải lại diff">
-            <RefreshCw />
-          </button>
-        </div>
-        {diffError && <p className="error-text small">{diffError}</p>}
-        {!diff && !diffError && <p className="muted small">Đang tải…</p>}
-        {diff && files.length === 0 && <p className="muted small">Không có file nào thay đổi.</p>}
-        <ul className="m-files">
-          {files.slice(0, 12).map((f) => (
-            <li key={f.path}>
-              <span className={`m-file-status ${f.status}`} aria-hidden>
-                {f.status === 'added' || f.status === 'untracked' ? 'A' : f.status === 'deleted' ? 'D' : f.status === 'renamed' ? 'R' : 'M'}
-              </span>
-              <code className="m-file-path">{f.path}</code>
-              <span className="small">
-                <span className="add">+{f.additions}</span> <span className="del">−{f.deletions}</span>
-              </span>
-            </li>
-          ))}
-          {files.length > 12 && <li className="muted small">và {files.length - 12} file khác</li>}
-        </ul>
-        {diff && files.length > 0 && (
-          <button className="m-link" onClick={() => setShowDiff((v) => !v)}>
-            {showDiff ? 'Ẩn diff' : `Xem diff chi tiết${comments.length ? ` (${comments.length} nhận xét)` : ''}`}
-          </button>
-        )}
-        {showDiff && diff && (
-          <DiffView
-            diff={diff}
-            comments={comments}
-            onAddComment={(c) => setComments((prev) => [...prev, c])}
-            onRemoveComment={(i) => setComments((prev) => prev.filter((_, j) => j !== i))}
-          />
-        )}
-      </section>
+      {!isPlan && (
+        <section className="m-section">
+          <div className="m-section-head">
+            <span>
+              {diff ? `${files.length} file thay đổi` : 'Thay đổi'}
+              {diff && files.length > 0 && (
+                <span className="muted small">
+                  {' '}
+                  · <span className="add">+{adds}</span> <span className="del">−{dels}</span>
+                </span>
+              )}
+            </span>
+            <button className="m-btn small" onClick={load} aria-label="Tải lại diff">
+              <RefreshCw />
+            </button>
+          </div>
+          {diffError && <p className="error-text small">{diffError}</p>}
+          {!diff && !diffError && <p className="muted small">Đang tải…</p>}
+          {diff && files.length === 0 && <p className="muted small">Không có file nào thay đổi.</p>}
+          <ul className="m-files">
+            {files.slice(0, 12).map((f) => (
+              <li key={f.path}>
+                <span className={`m-file-status ${f.status}`} aria-hidden>
+                  {f.status === 'added' || f.status === 'untracked' ? 'A' : f.status === 'deleted' ? 'D' : f.status === 'renamed' ? 'R' : 'M'}
+                </span>
+                <code className="m-file-path">{f.path}</code>
+                <span className="small">
+                  <span className="add">+{f.additions}</span> <span className="del">−{f.deletions}</span>
+                </span>
+              </li>
+            ))}
+            {files.length > 12 && <li className="muted small">và {files.length - 12} file khác</li>}
+          </ul>
+          {diff && files.length > 0 && (
+            <button className="m-link" onClick={() => setShowDiff((v) => !v)}>
+              {showDiff ? 'Ẩn diff' : `Xem diff chi tiết${comments.length ? ` (${comments.length} nhận xét)` : ''}`}
+            </button>
+          )}
+          {showDiff && diff && (
+            <DiffView
+              diff={diff}
+              comments={comments}
+              onAddComment={(c) => setComments((prev) => [...prev, c])}
+              onRemoveComment={(i) => setComments((prev) => prev.filter((_, j) => j !== i))}
+            />
+          )}
+        </section>
+      )}
 
       {more && (
         <Sheet title="Cách hoàn tất khác" onClose={() => setMore(false)}>
@@ -309,8 +329,15 @@ function Review({
           <button className="m-btn big" disabled={busy} onClick={() => setAsking(true)}>
             <Mic /> Yêu cầu sửa{comments.length ? ` (${comments.length})` : ''}
           </button>
-          {isAsk ? (
-            <button className="m-btn big primary" disabled={busy} onClick={() => run(() => api.finish(card.id, 'discard', ''), 'Đã đóng việc.')}>
+          {readOnly ? (
+            <button
+              className="m-btn big primary"
+              disabled={busy}
+              onClick={() =>
+                (!isPlan || confirm('Đóng thẻ kế hoạch? Các việc đã nhập vẫn ở To Do.')) &&
+                run(() => api.finish(card.id, 'discard', ''), isPlan ? 'Đã đóng kế hoạch.' : 'Đã đóng việc.')
+              }
+            >
               <Check /> Xong
             </button>
           ) : multi ? (
@@ -351,20 +378,21 @@ function Review({
             </button>
           )}
         </div>
-        <div className="m-row m-row-links">
-          {!isAsk && (
+        {!readOnly && (
+          <div className="m-row m-row-links">
             <button className="m-link danger" disabled={busy} onClick={() => confirm('Xóa toàn bộ thay đổi, worktree và nhánh của việc này?') && run(() => api.finish(card.id, 'discard', ''), 'Đã hủy và xóa nhánh.')}>
               Hủy và xóa nhánh
             </button>
-          )}
-          <button className="m-link" onClick={() => setMore(true)}>
-            {prFlow || multi ? 'Cách khác…' : 'Cách khác (commit, PR)…'}
-          </button>
-        </div>
+            <button className="m-link" onClick={() => setMore(true)}>
+              {prFlow || multi ? 'Cách khác…' : 'Cách khác (commit, PR)…'}
+            </button>
+          </div>
+        )}
       </div>
 
       {asking && (
         <RequestChanges
+          placeholder={isPlan ? 'Muốn đổi gì trong kế hoạch? Ví dụ: tách việc 2 làm hai, bỏ phần thanh toán.' : undefined}
           comments={comments}
           toasts={toasts}
           onClose={() => setAsking(false)}
@@ -531,12 +559,14 @@ function PreviewBlock({ card, toasts, autoStart }: { card: Card; toasts: ToastAp
 }
 
 function RequestChanges({
+  placeholder = 'Cần sửa gì? Ví dụ: nút thanh toán bị che trên iPhone nhỏ, đẩy lên trên.',
   comments,
   toasts,
   busy,
   onClose,
   onSend,
 }: {
+  placeholder?: string;
   comments: ReviewComment[];
   toasts: ToastApi;
   busy: boolean;
@@ -560,7 +590,7 @@ function RequestChanges({
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={4}
-          placeholder="Cần sửa gì? Ví dụ: nút thanh toán bị che trên iPhone nhỏ, đẩy lên trên."
+          placeholder={placeholder}
           autoFocus
         />
         {interim && <p className="interim">{interim}</p>}
@@ -592,13 +622,3 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-/** Text a patch adds to one file (used to show the answer of an "ask" card). */
-function addedText(patch: string, path: string): string | null {
-  const chunk = patch.split(/^diff --git /m).find((c) => c.includes(` b/${path}`) || c.startsWith(`a/${path} `));
-  if (!chunk) return null;
-  const lines = chunk
-    .split('\n')
-    .filter((l) => l.startsWith('+') && !l.startsWith('+++'))
-    .map((l) => l.slice(1));
-  return lines.length ? lines.join('\n') : null;
-}

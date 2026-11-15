@@ -3,6 +3,7 @@ import { Bell, BellOff, Check, CircleDot, ExternalLink, KeyRound, Menu, Mic, Pla
 import { type Card, type Device, type Project } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { useAgentModels } from '../hooks.ts';
+import { MODE_TAGS } from '../modes.ts';
 import { agentText } from '../models.ts';
 import { CiLabel, ciSummary } from '../components/PrPanel.tsx';
 import type { ToastApi } from '../components/Toasts.tsx';
@@ -198,6 +199,7 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
         )}
         <div className="m-meta">
           {agentText(card, models)}
+          {MODE_TAGS[card.mode] && ` · ${MODE_TAGS[card.mode]}`}
           {card.branch && (
             <>
               {' · '}

@@ -252,7 +252,7 @@ export function cardPayload(event: CardEventName, card: Card, projectName: strin
   if (kind === 'done') {
     return {
       ...base,
-      title: `${card.mode === 'ask' ? '✓ Có câu trả lời' : '✓ Xong, chờ review'}: ${card.title}`,
+      title: `${card.mode === 'ask' ? '✓ Có câu trả lời' : card.mode === 'plan' ? '✓ Có kế hoạch' : '✓ Xong, chờ review'}: ${card.title}`,
       body: clip(card.summary ? `${where} — ${card.summary}` : where),
     };
   }

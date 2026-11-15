@@ -4,6 +4,7 @@ import type { Card, Device, LogLine, Project, ServerToWeb } from '@localkan/prot
 import { api, type AuthState, connectLive } from './api.ts';
 import { AuthScreen } from './components/AuthScreen.tsx';
 import { Board } from './components/Board.tsx';
+import { AccountMenu } from './components/AccountMenu.tsx';
 import { CardPanel } from './components/CardPanel.tsx';
 import { DevicesDialog } from './components/DevicesDialog.tsx';
 import { Dialog } from './components/Dialog.tsx';
@@ -342,15 +343,12 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
           <span className={`live ${live ? 'ok' : 'off'}`} title={live ? 'Đang nhận cập nhật trực tiếp' : 'Mất kết nối'}>
             {live ? 'Live' : 'Offline'}
           </span>
-          <span className="muted email">{email}</span>
           {narrow && (
             <button className="btn ghost" onClick={() => setViewPref('auto')} title="Giao diện gọn cho điện thoại">
               <Smartphone />
             </button>
           )}
-          <button className="btn ghost" onClick={onLogout}>
-            Đăng xuất
-          </button>
+          <AccountMenu email={email} onLogout={onLogout} />
         </header>
 
         {project ? (
