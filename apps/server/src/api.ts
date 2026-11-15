@@ -18,6 +18,10 @@ import {
   type PushSubscriptionJSON,
   type GitSettings,
   DEFAULT_GIT_SETTINGS,
+  PLAN_FILE,
+  PLAN_TEXT_MAX,
+  addedText,
+  parsePlan,
 } from '@localkan/protocol';
 import { hashPassword, newPairingCode, newToken, normalizePairingCode, sha256, verifyPassword } from './auth.ts';
 import { BridgeRequestError, type Hub } from './hub.ts';
@@ -181,6 +185,19 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
   const pushCard = (userId: string, card: Card | null) => {
     if (card) hub.sendToUser(userId, { type: 'card.updated', card });
     return card;
+  };
+
+  /** The plan file a planning card's agent wrote, read from its worktree; null when there is
+   *  none or the worktree cannot be read (closing goes on either way). */
+  const readPlanText = async (deviceId: string, cardId: string): Promise<string | null> => {
+    try {
+      const diff = await hub.request(deviceId, 'card.diff', { cardId }, 60_000);
+      const text = addedText(diff.patch, PLAN_FILE)?.trim();
+      return text ? text.slice(0, PLAN_TEXT_MAX) : null;
+    } catch (err) {
+      console.warn(`plan of card ${cardId} not kept: ${(err as Error).message}`);
+      return null;
+    }
   };
 
   // Devices ------------------------------------------------------------------
@@ -521,6 +538,20 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     return c.json({ created: tasks.length });
   });
 
+  // A planning card closed before plans were kept on cards: put its plan file back by hand.
+  api.put('/cards/:id/plan', async (c) => {
+    const { card, userId } = await ownCard(c, c.req.param('id'));
+    if (card.mode !== 'plan') throw new HttpError(400, 'Thẻ này không phải thẻ lập kế hoạch.');
+    if (card.status !== 'done') throw new HttpError(409, 'Thẻ chưa đóng: kế hoạch được đọc thẳng từ worktree của thẻ.');
+    const b = await body<{ text?: unknown }>(c);
+    const text = String(b.text ?? '').trim();
+    if (text.length > PLAN_TEXT_MAX) throw new HttpError(400, 'Kế hoạch quá dài.');
+    const read = parsePlan(text);
+    if (!read) throw new HttpError(400, `Chưa có nội dung ${PLAN_FILE}.`);
+    if ('error' in read) throw new HttpError(400, read.error);
+    return c.json(pushCard(userId, await store.updateCard(card.id, { planText: text })));
+  });
+
   api.patch('/cards/:id', async (c) => {
     const { card } = await ownCard(c, c.req.param('id'));
     const b = await body<Partial<Pick<Card, 'title' | 'prompt' | 'agent' | 'model' | 'mode' | 'position' | 'parentCardId' | 'autoPreview'>>>(c);
@@ -737,6 +768,12 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     const action = b.action ?? 'commit';
     if (!['ship', 'merge_push', 'merge_pr', 'commit', 'pr', 'merge', 'discard'].includes(action)) throw new HttpError(400, 'Hành động không hợp lệ.');
     const project = await ownProject(c, card.projectId);
+    // A plan lives in the card's worktree, which finishing removes: keep it on the card first,
+    // so it can still be read and imported from Done.
+    if (card.mode === 'plan') {
+      const planText = await readPlanText(deviceId, card.id);
+      if (planText) await store.updateCard(card.id, { planText });
+    }
     const res = await hub.request(
       deviceId,
       'card.finish',
@@ -749,7 +786,8 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       waiting: null,
       prUrl: res.prUrl ?? card.prUrl,
       ...(res.repos ? { repos: res.repos } : {}),
-      summary: res.message,
+      // Closing a question or a plan discards nothing of value: keep the agent's report.
+      summary: card.mode !== 'act' && card.summary ? card.summary : res.message,
       error: null,
       preview: null,
       pr: null,

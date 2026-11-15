@@ -93,6 +93,7 @@ interface CardDoc {
   preview: PreviewInfo | null;
   autoPreview?: boolean;
   planImport?: { at: string; count: number } | null;
+  planText?: string | null;
   pr?: PrInfo | null;
   repos?: CardRepo[];
   attachments: Attachment[];
@@ -167,6 +168,7 @@ export function toCard(c: CardDoc): Card {
     preview: c.preview ?? null,
     autoPreview: c.autoPreview ?? false,
     planImport: c.planImport ?? null,
+    planText: c.planText ?? null,
     pr: c.pr ?? null,
     repos: c.repos ?? [],
     attachments: c.attachments ?? [],

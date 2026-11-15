@@ -11,6 +11,7 @@ import {
 } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { useAgentModels, useScrollLock } from '../hooks.ts';
+import { closeConfirm } from '../modes.ts';
 import { agentText } from '../models.ts';
 import { addedText } from '../text.ts';
 import { PlanView } from '../components/PlanView.tsx';
@@ -170,6 +171,13 @@ export function CardScreen({
                 <ExternalLink /> Mở Pull Request
               </a>
             )}
+          </section>
+        )}
+
+        {card.status === 'done' && card.mode === 'plan' && (
+          <section className="m-section">
+            <div className="m-section-head">Kế hoạch</div>
+            <PlanView card={card} project={project} diff={null} toasts={toasts} />
           </section>
         )}
 
@@ -335,7 +343,7 @@ function Review({
               className="m-btn big primary"
               disabled={busy}
               onClick={() =>
-                (!isPlan || confirm('Đóng thẻ kế hoạch? Các việc đã nhập vẫn ở To Do.')) &&
+                (!isPlan || confirm(closeConfirm(card))) &&
                 run(() => api.finish(card.id, 'discard', ''), isPlan ? 'Đã đóng kế hoạch.' : 'Đã đóng việc.')
               }
             >

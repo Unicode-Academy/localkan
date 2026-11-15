@@ -1,4 +1,4 @@
-import type { CardMode } from '@localkan/protocol';
+import type { Card, CardMode } from '@localkan/protocol';
 
 /** What each kind of card asks of the agent, for pickers. */
 export const MODE_LABELS: Record<CardMode, string> = {
@@ -23,3 +23,10 @@ export const MODE_PROMPT: Record<CardMode, { label: string; placeholder: string 
       'Mục tiêu, mong muốn, giới hạn… Agent đọc code, hỏi lại khi chưa rõ, rồi lập danh sách việc để bạn nhập vào To Do.',
   },
 };
+
+/** What "Xong" asks before closing a question or a planning card (its worktree is removed). */
+export function closeConfirm(card: Card): string {
+  if (card.mode !== 'plan') return 'Đóng thẻ này?';
+  if (card.planImport) return 'Đóng thẻ kế hoạch? Các việc đã nhập vẫn ở To Do.';
+  return 'Bạn chưa nhập việc nào của kế hoạch này vào To Do.\n\nVẫn đóng thẻ? Kế hoạch được lưu lại trong thẻ: mở thẻ ở cột Done để xem và nhập sau.';
+}

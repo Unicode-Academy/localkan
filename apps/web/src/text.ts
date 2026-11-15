@@ -9,16 +9,8 @@ export function deriveTitle(text: string, max = 70): string {
 }
 
 /** Text a patch adds to one file: the whole file when the file is new (the answer of an "ask"
- *  card, the plan of a planning card). */
-export function addedText(patch: string, path: string): string | null {
-  const chunk = patch.split(/^diff --git /m).find((c) => c.includes(` b/${path}`) || c.startsWith(`a/${path} `));
-  if (!chunk) return null;
-  const lines = chunk
-    .split('\n')
-    .filter((l) => l.startsWith('+') && !l.startsWith('+++'))
-    .map((l) => l.slice(1));
-  return lines.length ? lines.join('\n') : null;
-}
+ *  card, the plan of a planning card). Shared with the server, which keeps a closing plan. */
+export { addedText } from '@localkan/protocol';
 
 /** "15:00", or "09:00 16/11" when not today. */
 export function clockLabel(iso: string, now = new Date()): string {

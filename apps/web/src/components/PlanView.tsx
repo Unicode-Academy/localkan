@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { ListPlus } from 'lucide-react';
-import { AGENT_LABELS, AGENTS, PLAN_FILE, type AgentId, type Card, type DiffResult, type Project } from '@localkan/protocol';
+import { ArchiveRestore, ListPlus } from 'lucide-react';
+import { AGENT_LABELS, AGENTS, parsePlan, PLAN_FILE, type AgentId, type Card, type DiffResult, type Project } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { useAgentModels } from '../hooks.ts';
 import { readLastAgent, readLastModel, saveLastChoice } from '../models.ts';
@@ -9,9 +9,15 @@ import { Markdown } from './Markdown.tsx';
 import { ModelSelect } from './ModelSelect.tsx';
 import type { ToastApi } from './Toasts.tsx';
 
-/** The plan a planning card produced: its tasks, which to keep, and "import into To Do". */
+/** The plan a planning card produced: its tasks, which to keep, and "import into To Do".
+ *  An open card's plan is read from its worktree (`diff`); a closed card's from the copy kept
+ *  on the card when it closed. */
 export function PlanView({ card, project, diff, toasts }: { card: Card; project: Project; diff: DiffResult | null; toasts: ToastApi }) {
-  const read = useMemo(() => (diff ? readPlan(diff.patch) : null), [diff]);
+  const closed = card.status === 'done';
+  const read = useMemo(
+    () => (closed ? parsePlan(card.planText) : diff ? readPlan(diff.patch) : null),
+    [closed, card.planText, diff],
+  );
   const models = useAgentModels(project.deviceId);
   const [agent, setAgent] = useState<AgentId>(readLastAgent);
   const [model, setModel] = useState<string | null>(() => readLastModel(agent, models));
@@ -19,8 +25,9 @@ export function PlanView({ card, project, diff, toasts }: { card: Card; project:
   const [open, setOpen] = useState<Set<number>>(() => new Set());
   const [busy, setBusy] = useState(false);
 
-  if (!diff) return <p className="muted small">Đang tải kế hoạch…</p>;
+  if (!closed && !diff) return <p className="muted small">Đang tải kế hoạch…</p>;
   if (!read) {
+    if (closed) return <RestorePlan card={card} toasts={toasts} />;
     const working = card.runState === 'running' || card.runState === 'starting' || card.status === 'needs_input';
     return (
       <p className="muted">
@@ -65,6 +72,7 @@ export function PlanView({ card, project, diff, toasts }: { card: Card; project:
 
   return (
     <div className="plan">
+      {closed && <p className="muted small">Thẻ đã đóng. Đây là bản kế hoạch lưu lại lúc đóng, vẫn nhập vào To Do được.</p>}
       {plan.goal && <Markdown text={plan.goal} className="plan-goal" />}
       <ol className="plan-tasks">
         {plan.tasks.map((t, i) => (
@@ -119,6 +127,44 @@ export function PlanView({ card, project, diff, toasts }: { card: Card; project:
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+/** A closed planning card with no plan kept (closed before plans were kept on cards, or the
+ *  agent never wrote one): paste the plan file back to read and import it. */
+function RestorePlan({ card, toasts }: { card: Card; toasts: ToastApi }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.restorePlan(card.id, text);
+      toasts.info('Đã khôi phục kế hoạch.');
+    } catch (err) {
+      toasts.error((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="plan">
+      <p className="muted">
+        Thẻ đã đóng và không còn bản kế hoạch: thẻ đóng trước khi Localkan lưu kế hoạch vào thẻ, hoặc agent chưa viết kế hoạch. Nếu bạn
+        còn nội dung <code>{PLAN_FILE}</code>, dán vào đây để xem và nhập vào To Do.
+      </p>
+      <textarea
+        className="plan-paste"
+        rows={6}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder='{"goal": "…", "tasks": [{"title": "…", "prompt": "…"}]}'
+        aria-label={`Nội dung ${PLAN_FILE}`}
+        spellCheck={false}
+      />
+      <button className="btn primary" disabled={busy || !text.trim()} onClick={save}>
+        <ArchiveRestore /> {busy ? 'Đang khôi phục…' : 'Khôi phục kế hoạch'}
+      </button>
     </div>
   );
 }

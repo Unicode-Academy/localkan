@@ -79,6 +79,43 @@ export interface Plan {
   tasks: PlanTask[];
 }
 
+/** A plan file read: the plan, or why it cannot be used (with the text as written). */
+export type PlanRead = { plan: Plan } | { error: string; raw: string };
+
+/** Longest plan file a card keeps. */
+export const PLAN_TEXT_MAX = 200_000;
+
+/** The lines a unified diff adds to one file (a new file's whole content), or null when the
+ *  diff does not touch it. */
+export function addedText(patch: string, path: string): string | null {
+  const chunk = patch.split(/^diff --git /m).find((c) => c.includes(` b/${path}`) || c.startsWith(`a/${path} `));
+  if (!chunk) return null;
+  const lines = chunk
+    .split('\n')
+    .filter((l) => l.startsWith('+') && !l.startsWith('+++'))
+    .map((l) => l.slice(1));
+  return lines.length ? lines.join('\n') : null;
+}
+
+/** Read the content of `PLAN_FILE`. Null when there is none. */
+export function parsePlan(raw: string | null | undefined): PlanRead | null {
+  if (!raw?.trim()) return null;
+  // Tolerate a Markdown fence around the JSON.
+  const text = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    return { error: `Không đọc được ${PLAN_FILE}: ${(err as Error).message}`, raw };
+  }
+  const obj = (data ?? {}) as { goal?: unknown; tasks?: unknown };
+  const tasks: PlanTask[] = (Array.isArray(obj.tasks) ? obj.tasks : [])
+    .map((t) => ({ title: String((t as PlanTask)?.title ?? '').trim(), prompt: String((t as PlanTask)?.prompt ?? '').trim() }))
+    .filter((t) => t.title);
+  if (!tasks.length) return { error: `${PLAN_FILE} chưa có việc nào (mục "tasks").`, raw };
+  return { plan: { goal: String(obj.goal ?? '').trim(), tasks } };
+}
+
 export interface WaitingInfo {
   /** `question`: the agent asked through Orca orchestration and expects a text answer.
    *  `prompt`: the agent's terminal is parked on an interactive prompt (permission, trust…).
@@ -222,6 +259,9 @@ export interface Card {
   autoPreview: boolean;
   /** Planning card: when its tasks were imported into To Do, and how many. */
   planImport: { at: string; count: number } | null;
+  /** Planning card: its plan file, kept on the card when it closes (the worktree that held it
+   *  is removed then), so the plan can still be read and imported from Done. */
+  planText: string | null;
   attachments: Attachment[];
   createdAt: string;
   updatedAt: string;

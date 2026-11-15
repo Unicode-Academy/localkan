@@ -18,7 +18,7 @@ import {
 } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { useAgentModels, useNarrow, useScrollLock, type AgentModels } from '../hooks.ts';
-import { MODE_LABELS, MODE_TAGS } from '../modes.ts';
+import { closeConfirm, MODE_LABELS, MODE_TAGS } from '../modes.ts';
 import { agentText, readLastModel } from '../models.ts';
 import { addedText, clockLabel, listChoices, splitOptions } from '../text.ts';
 import { Markdown } from './Markdown.tsx';
@@ -580,10 +580,13 @@ function ReviewTab({
   const [diff, setDiff] = useState<DiffResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // A closed planning card has no worktree left; its plan was kept on the card.
+  const keptPlan = card.mode === 'plan' && card.status === 'done';
   const load = useCallback(() => {
+    if (keptPlan) return;
     setError(null);
     api.diff(card.id).then(setDiff, (e) => setError(e.message));
-  }, [card.id]);
+  }, [card.id, keptPlan]);
   useEffect(load, [load, card.updatedAt]);
 
   const multi = card.repos.length > 0;
@@ -591,11 +594,13 @@ function ReviewTab({
   if (card.mode === 'plan') {
     return (
       <div className="review">
-        <div className="row">
-          <button className="btn ghost small" onClick={load}>
-            <RefreshCw /> Tải lại kế hoạch
-          </button>
-        </div>
+        {!keptPlan && (
+          <div className="row">
+            <button className="btn ghost small" onClick={load}>
+              <RefreshCw /> Tải lại kế hoạch
+            </button>
+          </div>
+        )}
         {error && <p className="error-text">{error}</p>}
         <PlanView card={card} project={project} diff={diff} toasts={toasts} />
       </div>
@@ -701,7 +706,7 @@ function ReviewBar({
             className="btn primary"
             disabled={busy}
             onClick={() =>
-              confirm(card.mode === 'plan' ? 'Đóng thẻ kế hoạch? Các việc đã nhập vẫn ở To Do.' : 'Đóng thẻ này?') &&
+              confirm(closeConfirm(card)) &&
               run(() => api.finish(card.id, 'discard', ''), card.mode === 'plan' ? 'Đã đóng kế hoạch.' : 'Đã đóng thẻ.')
             }
           >

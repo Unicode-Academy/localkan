@@ -72,6 +72,7 @@ export const api = {
   /** Planning card: create a To Do card for each chosen task, in order. */
   importPlan: (id: string, tasks: PlanTask[], agent: AgentId, model: string | null) =>
     call<{ created: number }>('POST', `/cards/${id}/plan/import`, { tasks, agent, model }),
+  restorePlan: (id: string, text: string) => call<Card>('PUT', `/cards/${id}/plan`, { text }),
   previewStart: (id: string, tunnel: boolean) => call<PreviewInfo>('POST', `/cards/${id}/preview`, { tunnel }),
   previewStop: (id: string) => call('DELETE', `/cards/${id}/preview`),
   screenshots: (id: string, path: string) => call<{ shots: Screenshot[] }>('POST', `/cards/${id}/screenshots`, { path }),
