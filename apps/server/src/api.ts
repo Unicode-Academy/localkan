@@ -415,6 +415,25 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     return c.json(await store.listCards(p.id));
   });
 
+  // Measure what the agents spent on every started card of a board, finished ones too (the
+  // agents' records outlive the worktrees). Live cards are also measured by the bridge as
+  // they run; this fills in cards from before, or after the bridge was offline.
+  api.post('/projects/:id/usage/refresh', async (c) => {
+    const p = await ownProject(c, c.req.param('id'));
+    const cards = (await store.listCards(p.id)).filter((card) => card.status !== 'todo' && card.worktreePath);
+    if (!cards.length) return c.json({ measured: 0 });
+    const items = cards.map((card) => ({ cardId: card.id, agent: card.agent, worktreePath: card.worktreePath! }));
+    const res = await hub.request(p.deviceId, 'usage.read', { items }, 120_000);
+    let measured = 0;
+    for (const card of cards) {
+      const usage = res.usage?.[card.id];
+      if (!usage || JSON.stringify(usage) === JSON.stringify(card.usage)) continue;
+      pushCard(c.get('userId'), await store.updateCard(card.id, { usage }));
+      measured++;
+    }
+    return c.json({ measured });
+  });
+
   /** A parent must be another started card of the same board. */
   const checkParent = async (projectId: string, parentId: string, selfId: string | null): Promise<string> => {
     if (parentId === selfId) throw new HttpError(400, 'Thẻ không thể làm tiếp từ chính nó.');
@@ -786,6 +805,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       waiting: null,
       prUrl: res.prUrl ?? card.prUrl,
       ...(res.repos ? { repos: res.repos } : {}),
+      ...(res.usage ? { usage: res.usage } : {}),
       // Closing a question or a plan discards nothing of value: keep the agent's report.
       summary: card.mode !== 'act' && card.summary ? card.summary : res.message,
       error: null,

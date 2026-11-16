@@ -23,5 +23,6 @@ pub mod runtime;
 pub mod setup;
 pub mod skills;
 pub mod store;
+pub mod usage;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

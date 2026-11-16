@@ -4,6 +4,10 @@
 // Keep the two in sync: any change to BridgeMethods, BridgeEvents or the shapes they use
 // must be made on both sides.
 
+import type { CardUsage } from './usage.ts';
+
+export * from './usage.ts';
+
 /** Agent ids are Orca's: Orca launches each CLI (claude, agy, codex, grok) with its own flags. */
 export const AGENTS = ['claude', 'antigravity', 'codex', 'grok'] as const;
 export type AgentId = (typeof AGENTS)[number];
@@ -262,6 +266,8 @@ export interface Card {
   /** Planning card: its plan file, kept on the card when it closes (the worktree that held it
    *  is removed then), so the plan can still be read and imported from Done. */
   planText: string | null;
+  /** Tokens the agent spent on this card, per model; null until first measured. */
+  usage: CardUsage | null;
   attachments: Attachment[];
   /** When the card entered its current status (column); columns other than To Do list cards
    *  in this order, newest last. */
@@ -570,11 +576,16 @@ export interface BridgeMethods {
   'card.log': { params: { cardId: string; after?: number }; result: { lines: LogLine[] } };
   'card.finish': {
     params: { cardId: string; action: FinishAction; commitMessage: string; git: GitSettings; repoGit: Record<string, GitSettings> };
-    /** `repos`: multi-repo task, the final state of each repo. */
-    result: { prUrl?: string; message: string; repos?: CardRepo[] };
+    /** `repos`: multi-repo task, the final state of each repo. `usage`: what the agent spent. */
+    result: { prUrl?: string; message: string; repos?: CardRepo[]; usage?: CardUsage | null };
   };
   'card.stop': { params: { cardId: string }; result: { ok: true } };
   'card.focus': { params: { cardId: string }; result: { ok: true } };
+  /** Measure cards, finished ones too (the agents' records outlive the worktree). */
+  'usage.read': {
+    params: { items: { cardId: string; agent: AgentId; worktreePath: string }[] };
+    result: { usage: Record<string, CardUsage> };
+  };
 }
 
 export type BridgeMethod = keyof BridgeMethods;
@@ -594,6 +605,7 @@ export interface CardStatePatch {
   repos?: CardRepo[];
   /** Set by the bridge when it sees the PR merged on GitHub (the task is then done). */
   prUrl?: string | null;
+  usage?: CardUsage;
 }
 
 export interface BridgeEvents {

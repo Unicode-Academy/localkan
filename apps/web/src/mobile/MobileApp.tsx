@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, BellOff, ChevronLeft, Eye, GitBranch, Globe, Kanban, LogOut, Settings2, X } from 'lucide-react';
+import { Bell, BellOff, ChevronLeft, CircleDollarSign, Eye, GitBranch, Globe, Kanban, LogOut, Settings2, X } from 'lucide-react';
 import type { Card, Device, LogLine, Project } from '@localkan/protocol';
 import { CardPanel } from '../components/CardPanel.tsx';
 import { useScrollLock } from '../hooks.ts';
@@ -12,6 +12,7 @@ import { CardScreen } from './CardScreen.tsx';
 import { NewTask } from './NewTask.tsx';
 import { Overview } from './Overview.tsx';
 import { BoardDialog } from '../components/BoardDialog.tsx';
+import { CostDialog } from '../components/CostDialog.tsx';
 
 /** Phone layout: an overview of every board's work, a quick "new task" screen, and one screen
  *  per card. Screens live in the URL hash so the phone's back gesture works. */
@@ -49,7 +50,7 @@ export function MobileApp({
   const inApp = useRef(false);
   const [menu, setMenu] = useState(false);
   const [full, setFull] = useState<string | null>(null);
-  const [tool, setTool] = useState<{ kind: 'browser' | 'preview' | 'git' | 'board'; projectId: string } | null>(null);
+  const [tool, setTool] = useState<{ kind: 'browser' | 'preview' | 'git' | 'board' | 'cost'; projectId: string } | null>(null);
   useScrollLock(menu);
 
   // Each screen starts at the top (the overview's scroll position must not carry over).
@@ -170,6 +171,9 @@ export function MobileApp({
                   <button className="m-btn small" onClick={() => (setMenu(false), setTool({ kind: 'git', projectId: p.id }))}>
                     <GitBranch /> {p.git.flow === 'pr' ? `PR → ${p.git.baseBranch ?? p.baseRef ?? 'main'}` : p.git.flow === 'push' ? `Push → ${p.git.baseBranch ?? p.baseRef ?? 'main'}` : 'Git'}
                   </button>
+                  <button className="m-btn small" onClick={() => (setMenu(false), setTool({ kind: 'cost', projectId: p.id }))} aria-label={`Chi phí AI của bảng ${p.name}`}>
+                    <CircleDollarSign /> Chi phí
+                  </button>
                   <button className="m-btn small" onClick={() => (setMenu(false), setTool({ kind: 'board', projectId: p.id }))} aria-label={`Cài đặt bảng ${p.name}`}>
                     <Settings2 /> Bảng
                   </button>
@@ -199,6 +203,19 @@ export function MobileApp({
 
       {tool && toolProject && tool.kind === 'git' && (
         <GitSettingsDialog project={toolProject} onClose={() => setTool(null)} toasts={toasts} />
+      )}
+      {tool && toolProject && tool.kind === 'cost' && (
+        <CostDialog
+          project={toolProject}
+          device={devices.find((d) => d.id === toolProject.deviceId) ?? null}
+          cards={all.filter((c) => c.projectId === toolProject.id)}
+          onOpenCard={(id) => {
+            setTool(null);
+            go(`#card/${id}`);
+          }}
+          onClose={() => setTool(null)}
+          toasts={toasts}
+        />
       )}
       {tool && toolProject && tool.kind === 'board' && (
         <BoardDialog

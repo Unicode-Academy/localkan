@@ -99,6 +99,9 @@ pub struct CardStatePatch {
     pub pr_url: Option<Option<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repos: Option<Vec<CardRepoInfo>>,
+    /// Tokens the card's agent used so far, per model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<crate::usage::CardUsage>,
 }
 
 impl CardStatePatch {
@@ -127,6 +130,7 @@ impl CardStatePatch {
         take!(pr);
         take!(pr_url);
         take!(repos);
+        take!(usage);
     }
 }
 
@@ -358,6 +362,22 @@ pub struct CardFollowup {
 #[serde(rename_all = "camelCase")]
 pub struct CardRef {
     pub card_id: String,
+}
+
+/// `usage.read`: measure cards the server names, finished ones included (the agent's
+/// records outlive the worktree).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageRead {
+    pub items: Vec<UsageItem>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageItem {
+    pub card_id: String,
+    pub agent: String,
+    pub worktree_path: String,
 }
 
 #[derive(Debug, Deserialize)]

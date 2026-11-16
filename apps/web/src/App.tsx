@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, BellOff, Brain, Eye, GitBranch, Globe, Kanban, Plus, Settings2, Smartphone } from 'lucide-react';
-import type { Card, Device, LogLine, Project, ServerToWeb } from '@localkan/protocol';
+import { Bell, BellOff, Brain, CircleDollarSign, Eye, GitBranch, Globe, Kanban, Plus, Settings2, Smartphone } from 'lucide-react';
+import { formatUsd, summarizeUsage, type Card, type Device, type LogLine, type Project, type ServerToWeb } from '@localkan/protocol';
 import { api, type AuthState, connectLive } from './api.ts';
 import { AuthScreen } from './components/AuthScreen.tsx';
 import { Board } from './components/Board.tsx';
 import { AccountMenu } from './components/AccountMenu.tsx';
 import { BoardDialog } from './components/BoardDialog.tsx';
+import { CostDialog } from './components/CostDialog.tsx';
 import { CardPanel } from './components/CardPanel.tsx';
 import { DevicesDialog } from './components/DevicesDialog.tsx';
 import { Dialog } from './components/Dialog.tsx';
@@ -60,7 +61,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
   const [logs, setLogs] = useState<Record<string, LogLine[]>>({});
   const [projectId, setProjectId] = useState<string | null>(readLastProject);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<'devices' | 'project' | 'board' | 'memory' | 'preview' | 'browser' | 'notify' | 'git' | null>(null);
+  const [dialog, setDialog] = useState<'devices' | 'project' | 'board' | 'cost' | 'memory' | 'preview' | 'browser' | 'notify' | 'git' | null>(null);
   const [pushOn, setPushOn] = useState<boolean | null>(null);
   const [live, setLive] = useState(false);
   const toasts = useToasts();
@@ -235,6 +236,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
   );
   const openCard = openCardId ? cards[openCardId] ?? null : null;
   const device = project ? devices.find((d) => d.id === project.deviceId) ?? null : null;
+  const boardCost = useMemo(() => summarizeUsage(projectCards.map((c) => c.usage)), [projectCards]);
 
   const setCardLog = useCallback((cardId: string, lines: LogLine[]) => {
     setLogs((prev) => ({ ...prev, [cardId]: lines.slice(-MAX_LOG_LINES) }));
@@ -295,6 +297,17 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
           <button className="btn ghost" onClick={() => setDialog('project')}>
             <Plus /> Bảng mới
           </button>
+          {project && (
+            <button
+              className="btn ghost"
+              onClick={() => setDialog('cost')}
+              title="Chi phí AI của bảng (ước tính theo giá API)"
+              aria-label="Chi phí AI"
+            >
+              <CircleDollarSign />
+              <span className="topbar-label"> {boardCost.tokens > 0 ? formatUsd(boardCost.usd) : 'Chi phí'}</span>
+            </button>
+          )}
           {project && (
             <button
               className="btn ghost"
@@ -411,6 +424,19 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
         {dialog === 'git' && project && <GitSettingsDialog project={project} onClose={() => setDialog(null)} toasts={toasts} />}
         {dialog === 'board' && project && (
           <BoardDialog project={project} device={device} cards={projectCards} onClose={() => setDialog(null)} toasts={toasts} />
+        )}
+        {dialog === 'cost' && project && (
+          <CostDialog
+            project={project}
+            device={device}
+            cards={projectCards}
+            onOpenCard={(id) => {
+              setDialog(null);
+              setOpenCardId(id);
+            }}
+            onClose={() => setDialog(null)}
+            toasts={toasts}
+          />
         )}
         {dialog === 'memory' && project && <MemoryDialog project={project} onClose={() => setDialog(null)} toasts={toasts} />}
         {dialog === 'browser' && project && (

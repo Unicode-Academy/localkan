@@ -10,6 +10,7 @@ import type {
   BridgeInfo,
   Card,
   CardMode,
+  CardUsage,
   CardStatus,
   Device,
   PreviewInfo,
@@ -94,6 +95,7 @@ interface CardDoc {
   autoPreview?: boolean;
   planImport?: { at: string; count: number } | null;
   planText?: string | null;
+  usage?: CardUsage | null;
   pr?: PrInfo | null;
   repos?: CardRepo[];
   attachments: Attachment[];
@@ -171,6 +173,7 @@ export function toCard(c: CardDoc): Card {
     autoPreview: c.autoPreview ?? false,
     planImport: c.planImport ?? null,
     planText: c.planText ?? null,
+    usage: c.usage ?? null,
     pr: c.pr ?? null,
     repos: c.repos ?? [],
     attachments: c.attachments ?? [],

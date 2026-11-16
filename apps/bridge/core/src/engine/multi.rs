@@ -587,7 +587,11 @@ impl Engine {
         patch.repos = Some(card_repos(&children));
         self.send_event("card.state", serde_json::to_value(&patch).unwrap_or_default());
         self.sys(&card.card_id, summary.clone()).await;
-        Ok(json!({ "prUrl": pr_url, "message": summary, "repos": card_repos(&children) }))
+        let usage = match card.worktree_path.as_deref() {
+            Some(wt) => Some(crate::usage::read(&card.agent, Path::new(wt)).await),
+            None => None,
+        };
+        Ok(json!({ "prUrl": pr_url, "message": summary, "repos": card_repos(&children), "usage": usage }))
     }
 
     /// Ship one repo its own way. Repos without changes are skipped.

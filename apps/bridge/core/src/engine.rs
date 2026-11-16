@@ -33,6 +33,8 @@ const RUN_WAITING: &str = "waiting";
 const RUN_SUCCEEDED: &str = "succeeded";
 const RUN_FAILED: &str = "failed";
 const RUN_STOPPED: &str = "stopped";
+/// Ticks (2 s each) between reads of what active cards' agents spent.
+const USAGE_EVERY: u64 = 15;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -126,6 +128,8 @@ pub struct Engine {
     cards: Mutex<HashMap<String, CardRt>>,
     coord_lock: Mutex<()>,
     ticks: AtomicU64,
+    /// A usage read is in progress (they run in the background, one at a time).
+    usage_busy: std::sync::atomic::AtomicBool,
     /// Per-card filters that strip TUI repaint noise from agent output.
     filters: std::sync::Mutex<HashMap<String, LogFilter>>,
     device_name: String,
@@ -188,6 +192,7 @@ impl Engine {
             cards: Mutex::new(cards),
             coord_lock: Mutex::new(()),
             ticks: AtomicU64::new(0),
+            usage_busy: std::sync::atomic::AtomicBool::new(false),
             filters: std::sync::Mutex::new(HashMap::new()),
             device_name,
             mock_cmd,
@@ -399,6 +404,15 @@ impl Engine {
             "card.finish" => {
                 let p: CardFinish = serde_json::from_value(params).map_err(bad_params)?;
                 self.finish(p).await
+            }
+            "usage.read" => {
+                let p: UsageRead = serde_json::from_value(params).map_err(bad_params)?;
+                let mut out = serde_json::Map::new();
+                for it in p.items.iter().take(500) {
+                    let u = crate::usage::read(&it.agent, Path::new(&it.worktree_path)).await;
+                    out.insert(it.card_id.clone(), serde_json::to_value(u).unwrap_or_default());
+                }
+                Ok(json!({ "usage": out }))
             }
             other => return Err(BridgeError::new("unknown_method", format!("Bridge không hỗ trợ {other}"))),
         };
@@ -1900,7 +1914,8 @@ impl Engine {
             }
         }
         self.sys(&card.card_id, summary.clone()).await;
-        Ok(json!({ "prUrl": pr_url, "message": summary }))
+        let usage = crate::usage::read(&card.agent, Path::new(&wt)).await;
+        Ok(json!({ "prUrl": pr_url, "message": summary, "usage": usage }))
     }
 
     // -- GitHub pull requests (flow "pr") --------------------------------------
@@ -2207,6 +2222,13 @@ impl Engine {
     pub async fn tick(self: &Arc<Self>) {
         let n = self.ticks.fetch_add(1, Ordering::Relaxed);
         self.pr_tick(n).await;
+        if n % USAGE_EVERY == USAGE_EVERY / 2 && !self.usage_busy.swap(true, Ordering::SeqCst) {
+            let me = self.clone();
+            tokio::spawn(async move {
+                me.usage_tick().await;
+                me.usage_busy.store(false, Ordering::SeqCst);
+            });
+        }
         let cards: Vec<CardRt> = self
             .cards
             .lock()
@@ -2242,6 +2264,25 @@ impl Engine {
                     tracing::debug!(card = c.card_id, "observe: {e:#}");
                 }
             }
+        }
+    }
+
+    /// Re-read what each active card's agent spent and send it when it changed.
+    async fn usage_tick(&self) {
+        let cards: Vec<CardRt> = self.cards.lock().await.values().filter(|c| c.active && c.worktree_path.is_some()).cloned().collect();
+        for c in cards {
+            let Some(wt) = c.worktree_path.as_deref() else { continue };
+            // The mock agent of dev mode spends nothing.
+            if self.mock_cmd.is_some() {
+                continue;
+            }
+            let u = crate::usage::read(&c.agent, Path::new(wt)).await;
+            if c.last.usage.as_ref() == Some(&u) || (u.buckets.is_empty() && !u.unsupported && c.last.usage.is_none()) {
+                continue;
+            }
+            let mut patch = CardStatePatch::new(&c.card_id);
+            patch.usage = Some(u);
+            self.emit(patch).await;
         }
     }
 

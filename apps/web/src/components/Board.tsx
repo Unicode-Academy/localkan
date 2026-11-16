@@ -16,6 +16,7 @@ import { agentText } from '../models.ts';
 import { clockLabel } from '../text.ts';
 import { NewCardDialog } from './NewCardDialog.tsx';
 import { RunBadge } from './RunBadge.tsx';
+import { CostTag } from './UsageView.tsx';
 import type { ToastApi } from './Toasts.tsx';
 import { CiLabel, ciSummary } from './PrPanel.tsx';
 
@@ -232,6 +233,7 @@ function CardTile({
             <Eye /> {card.preview.url ? 'link' : 'local'}
           </span>
         )}
+        <CostTag card={card} />
         <div className="spacer" />
         <RunBadge state={card.runState} />
       </div>

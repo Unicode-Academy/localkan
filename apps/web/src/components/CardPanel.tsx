@@ -32,6 +32,7 @@ import { PreviewTab } from './PreviewTab.tsx';
 import { PrPanel, ReposPanel } from './PrPanel.tsx';
 import { RemoteBrowser } from './RemoteBrowser.tsx';
 import { RunBadge } from './RunBadge.tsx';
+import { UsageSection } from './UsageView.tsx';
 import type { ToastApi } from './Toasts.tsx';
 import { appendPhrase, VoiceButton } from './VoiceButton.tsx';
 
@@ -135,6 +136,8 @@ export function CardPanel({
           <Markdown text={card.summary} />
           </div>
         )}
+
+        <UsageSection card={card} />
 
         {card.waiting && <WaitingBox card={card} cards={cards} project={project} toasts={toasts} busy={busy} run={run} />}
 

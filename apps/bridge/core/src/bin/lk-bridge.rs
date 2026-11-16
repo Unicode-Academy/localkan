@@ -36,6 +36,12 @@ enum Cmd {
     Status,
     /// Forget the server and delete the device token.
     Unpair,
+    /// Print the tokens an agent spent in a folder (a card's worktree), as JSON.
+    Usage {
+        /// claude, codex, grok or antigravity.
+        agent: String,
+        path: std::path::PathBuf,
+    },
     /// Install what the bridge needs on this machine (Git, Node.js, Orca…; not the agent
     /// CLIs), skipping what is already installed.
     Setup {
@@ -95,6 +101,10 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Unpair => {
             config::unpair().await?;
             println!("Đã gỡ ghép nối.");
+        }
+        Cmd::Usage { agent, path } => {
+            let u = localkan_bridge_core::usage::read(&agent, &path).await;
+            println!("{}", serde_json::to_string_pretty(&u)?);
         }
         Cmd::Setup { check } => {
             print_items(&setup::check().await);

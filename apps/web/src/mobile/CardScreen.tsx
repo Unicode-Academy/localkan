@@ -15,6 +15,7 @@ import { closeConfirm } from '../modes.ts';
 import { agentText } from '../models.ts';
 import { addedText } from '../text.ts';
 import { PlanView } from '../components/PlanView.tsx';
+import { UsageSection } from '../components/UsageView.tsx';
 import { Markdown } from '../components/Markdown.tsx';
 import { FinishBox, LogTab, WaitingBox, type Run } from '../components/CardPanel.tsx';
 import { DiffView } from '../components/DiffView.tsx';
@@ -180,6 +181,8 @@ export function CardScreen({
             <PlanView card={card} project={project} diff={null} toasts={toasts} />
           </section>
         )}
+
+        <UsageSection card={card} />
 
         <button className="m-link" onClick={onFull}>
           Mở chi tiết đầy đủ (nhiệm vụ, terminal, xem trước…)
