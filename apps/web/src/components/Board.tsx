@@ -48,7 +48,13 @@ export function Board({
   const [creating, setCreating] = useState<CardMode | null>(null);
   const models = useAgentModels(project.deviceId);
 
-  const byStatus = (s: CardStatus) => cards.filter((c) => c.status === s).sort((a, b) => a.position - b.position);
+  // To Do keeps the order you arrange; the other columns list cards in the order they arrived
+  // there, newest at the bottom.
+  const arrived = (c: Card) => c.statusAt ?? c.updatedAt;
+  const byStatus = (s: CardStatus) =>
+    cards
+      .filter((c) => c.status === s)
+      .sort((a, b) => (s === 'todo' ? a.position - b.position : arrived(a).localeCompare(arrived(b))) || a.createdAt.localeCompare(b.createdAt));
 
   const onDrop = async (e: DragEvent, target: CardStatus) => {
     e.preventDefault();

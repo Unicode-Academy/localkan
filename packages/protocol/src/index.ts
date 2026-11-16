@@ -263,6 +263,9 @@ export interface Card {
    *  is removed then), so the plan can still be read and imported from Done. */
   planText: string | null;
   attachments: Attachment[];
+  /** When the card entered its current status (column); columns other than To Do list cards
+   *  in this order, newest last. */
+  statusAt: string;
   createdAt: string;
   updatedAt: string;
 }

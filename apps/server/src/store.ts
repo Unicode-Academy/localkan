@@ -97,12 +97,14 @@ interface CardDoc {
   pr?: PrInfo | null;
   repos?: CardRepo[];
   attachments: Attachment[];
+  /** When the card entered its current status (column). */
+  statusAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
 
 /** Fields of a card that callers may change. */
-export type CardPatch = Partial<Omit<Card, 'id' | 'projectId' | 'attachments' | 'createdAt' | 'updatedAt'>>;
+export type CardPatch = Partial<Omit<Card, 'id' | 'projectId' | 'attachments' | 'statusAt' | 'createdAt' | 'updatedAt'>>;
 
 export interface CardOwner {
   card: Card;
@@ -172,6 +174,7 @@ export function toCard(c: CardDoc): Card {
     pr: c.pr ?? null,
     repos: c.repos ?? [],
     attachments: c.attachments ?? [],
+    statusAt: iso(c.statusAt ?? c.updatedAt)!,
     createdAt: iso(c.createdAt)!,
     updatedAt: iso(c.updatedAt)!,
   };
@@ -208,6 +211,7 @@ export class Store {
     await client.connect();
     const store = new Store(client, dbName);
     await store.ensureIndexes();
+    await store.backfillStatusAt();
     return store;
   }
 
@@ -228,6 +232,12 @@ export class Store {
       this.cards.createIndex({ parentCardId: 1 }),
       this.cards.createIndex({ 'attachments.id': 1 }),
     ]);
+  }
+
+  /** Cards from before `statusAt` was kept: their last update is the best guess. */
+  private async backfillStatusAt() {
+    const r = await this.cards.updateMany({ statusAt: { $exists: false } }, [{ $set: { statusAt: '$updatedAt' } }]);
+    if (r.modifiedCount) console.log(`statusAt set on ${r.modifiedCount} card(s)`);
   }
 
   // users & sessions ------------------------------------------------------------
@@ -444,6 +454,7 @@ export class Store {
       preview: null,
       autoPreview: c.autoPreview ?? false,
       attachments: [],
+      statusAt: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -451,7 +462,12 @@ export class Store {
 
   /** Apply a partial update and return the updated card. */
   async updateCard(id: string, patch: CardPatch): Promise<Card | null> {
-    const set: Record<string, unknown> = { updatedAt: new Date() };
+    const now = new Date();
+    // Moving to another column restarts the card's time there (columns list it by that time).
+    if (patch.status !== undefined) {
+      await this.cards.updateOne({ _id: id, status: { $ne: patch.status } }, { $set: { statusAt: now } });
+    }
+    const set: Record<string, unknown> = { updatedAt: now };
     for (const [k, v] of Object.entries(patch)) if (v !== undefined) set[k] = v;
     const doc = await this.cards.findOneAndUpdate({ _id: id }, { $set: set }, { returnDocument: 'after' });
     return doc ? toCard(doc) : null;
