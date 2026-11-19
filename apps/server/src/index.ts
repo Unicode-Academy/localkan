@@ -41,7 +41,7 @@ const hub = new Hub(store, {
   onCardEvent: (userId, event, card) => {
     store
       .getProject(card.projectId)
-      .then((p) => push.notify(userId, eventKind(event), cardPayload(event, card, p?.name ?? 'Localkan')))
+      .then((p) => push.notify(userId, eventKind(event), cardPayload(event, card, p?.name ?? 'Localkan', p?.budget.cardUsd)))
       .catch((err: Error) => console.error('notify:', err.message));
   },
 });

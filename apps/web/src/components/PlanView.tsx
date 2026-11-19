@@ -1,12 +1,25 @@
 import { useMemo, useState } from 'react';
 import { ArchiveRestore, ListPlus } from 'lucide-react';
-import { AGENT_LABELS, AGENTS, parsePlan, PLAN_FILE, type AgentId, type Card, type DiffResult, type Project } from '@localkan/protocol';
+import {
+  AGENT_LABELS,
+  AGENTS,
+  EFFORT_LABELS,
+  parsePlan,
+  PLAN_FILE,
+  TASK_LEVELS,
+  type AgentId,
+  type Card,
+  type DiffResult,
+  type Effort,
+  type Project,
+  type TaskLevel,
+} from '@localkan/protocol';
 import { api } from '../api.ts';
 import { useAgentModels } from '../hooks.ts';
-import { readLastAgent, readLastModel, saveLastChoice } from '../models.ts';
-import { readPlan } from '../plan.ts';
+import { modelLabel, readLastAgent, readLastEffort, readLastModel, saveLastChoice } from '../models.ts';
+import { LEVEL_LABELS, pickForLevel, readPlan } from '../plan.ts';
 import { Markdown } from './Markdown.tsx';
-import { ModelSelect } from './ModelSelect.tsx';
+import { EffortSelect, ModelSelect } from './ModelSelect.tsx';
 import type { ToastApi } from './Toasts.tsx';
 
 /** The plan a planning card produced: its tasks, which to keep, and "import into To Do".
@@ -21,6 +34,10 @@ export function PlanView({ card, project, diff, toasts }: { card: Card; project:
   const models = useAgentModels(project.deviceId);
   const [agent, setAgent] = useState<AgentId>(readLastAgent);
   const [model, setModel] = useState<string | null>(() => readLastModel(agent, models));
+  const [effort, setEffort] = useState<Effort | null>(readLastEffort);
+  // Pick model and effort per task from its level (the planner's judgment, overridable).
+  const [auto, setAuto] = useState<boolean | null>(null);
+  const [levels, setLevels] = useState<Map<number, TaskLevel>>(() => new Map());
   const [skipped, setSkipped] = useState<Set<number>>(() => new Set());
   const [open, setOpen] = useState<Set<number>>(() => new Set());
   const [busy, setBusy] = useState(false);
@@ -45,7 +62,16 @@ export function PlanView({ card, project, diff, toasts }: { card: Card; project:
   }
 
   const { plan } = read;
-  const chosen = plan.tasks.filter((_, i) => !skipped.has(i));
+  const byLevel = auto ?? plan.tasks.some((t) => t.level);
+  const levelOf = (i: number): TaskLevel => levels.get(i) ?? plan.tasks[i].level ?? 'normal';
+  const pick = (i: number) => pickForLevel(agent, levelOf(i), models, model);
+  const pickText = (i: number) => {
+    const p = pick(i);
+    return `${p.model ? modelLabel(agent, p.model, models) : 'model mặc định'} · effort ${EFFORT_LABELS[p.effort].toLowerCase()}`;
+  };
+  const chosen = plan.tasks
+    .map((t, i) => ({ ...t, level: levelOf(i), ...(byLevel ? pick(i) : {}) }))
+    .filter((_, i) => !skipped.has(i));
   const toggle = (set: Set<number>, i: number) => {
     const next = new Set(set);
     if (next.has(i)) next.delete(i);
@@ -60,8 +86,8 @@ export function PlanView({ card, project, diff, toasts }: { card: Card; project:
       return;
     setBusy(true);
     try {
-      const r = await api.importPlan(card.id, chosen, agent, model);
-      saveLastChoice(agent, model);
+      const r = await api.importPlan(card.id, chosen, agent, model, effort);
+      saveLastChoice(agent, model, byLevel ? undefined : effort);
       toasts.info(`Đã nhập ${r.created} việc vào To Do.`);
     } catch (err) {
       toasts.error((err as Error).message);
@@ -83,6 +109,23 @@ export function PlanView({ card, project, diff, toasts }: { card: Card; project:
                 <span className="plan-no">{i + 1}.</span> <strong>{t.title}</strong>
               </span>
             </label>
+            {byLevel && (
+              <div className="plan-level">
+                <select
+                  value={levelOf(i)}
+                  onChange={(e) => setLevels((m) => new Map(m).set(i, e.target.value as TaskLevel))}
+                  aria-label={`Độ khó việc ${i + 1}`}
+                  title="Độ khó do agent lập kế hoạch đánh giá; đổi được"
+                >
+                  {TASK_LEVELS.map((l) => (
+                    <option key={l} value={l}>
+                      {LEVEL_LABELS[l]}
+                    </option>
+                  ))}
+                </select>
+                <span className="muted small">→ {pickText(i)}</span>
+              </div>
+            )}
             {t.prompt && (
               <div
                 role="button"
@@ -115,8 +158,19 @@ export function PlanView({ card, project, diff, toasts }: { card: Card; project:
               </option>
             ))}
           </select>
-          <ModelSelect agent={agent} models={models} value={model} onChange={setModel} />
+          {!byLevel && <ModelSelect agent={agent} models={models} value={model} onChange={setModel} />}
+          {!byLevel && <EffortSelect value={effort} onChange={setEffort} />}
         </div>
+        <label className="check">
+          <input type="checkbox" checked={byLevel} onChange={(e) => setAuto(e.target.checked)} />
+          <span>
+            Chọn model và effort theo độ khó từng việc
+            <span className="muted small">
+              {' '}
+              ({agent === 'claude' ? 'Sonnet cho việc đơn giản và vừa, Opus cho việc khó; ' : ''}effort thấp / vừa / cao)
+            </span>
+          </span>
+        </label>
         <button className="btn primary" disabled={busy || chosen.length === 0} onClick={importNow}>
           <ListPlus /> {busy ? 'Đang nhập…' : `Nhập ${chosen.length} việc vào To Do`}
         </button>

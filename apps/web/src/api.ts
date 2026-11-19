@@ -21,6 +21,8 @@ import type {
   Screenshot,
   ServerToWeb,
   TerminalKey,
+  Effort,
+  BudgetSettings,
 } from '@localkan/protocol';
 
 export class ApiError extends Error {
@@ -63,16 +65,24 @@ export const api = {
   retryProject: (id: string) => call<Project>('POST', `/projects/${id}/retry`),
   deleteProject: (id: string) => call('DELETE', `/projects/${id}`),
   renameProject: (id: string, name: string) => call<Project>('PATCH', `/projects/${id}`, { name }),
+  updateProjectSettings: (id: string, patch: { leanAgents?: boolean; budget?: BudgetSettings }) =>
+    call<Project>('PATCH', `/projects/${id}`, patch),
   refreshUsage: (id: string) => call<{ measured: number }>('POST', `/projects/${id}/usage/refresh`),
 
   cards: (projectId: string) => call<Card[]>('GET', `/projects/${projectId}/cards`),
-  createCard: (projectId: string, c: Pick<Card, 'title' | 'prompt' | 'agent' | 'model' | 'mode' | 'parentCardId'> & { autoPreview?: boolean }) =>
+  createCard: (projectId: string, c: Pick<Card, 'title' | 'prompt' | 'agent' | 'model' | 'mode' | 'parentCardId'> & { effort?: Effort | null; autoPreview?: boolean }) =>
     call<Card>('POST', `/projects/${projectId}/cards`, c),
-  updateCard: (id: string, patch: Partial<Pick<Card, 'title' | 'prompt' | 'agent' | 'model' | 'mode' | 'position' | 'parentCardId' | 'autoPreview'>>) =>
+  updateCard: (id: string, patch: Partial<Pick<Card, 'title' | 'prompt' | 'agent' | 'model' | 'effort' | 'mode' | 'position' | 'parentCardId' | 'autoPreview'>>) =>
     call<Card>('PATCH', `/cards/${id}`, patch),
   /** Planning card: create a To Do card for each chosen task, in order. */
-  importPlan: (id: string, tasks: PlanTask[], agent: AgentId, model: string | null) =>
-    call<{ created: number }>('POST', `/cards/${id}/plan/import`, { tasks, agent, model }),
+  /** Each task may carry its own model and effort; the others take `model` / `effort`. */
+  importPlan: (
+    id: string,
+    tasks: (PlanTask & { model?: string | null; effort?: Effort | null })[],
+    agent: AgentId,
+    model: string | null,
+    effort: Effort | null,
+  ) => call<{ created: number }>('POST', `/cards/${id}/plan/import`, { tasks, agent, model, effort }),
   restorePlan: (id: string, text: string) => call<Card>('PUT', `/cards/${id}/plan`, { text }),
   previewStart: (id: string, tunnel: boolean) => call<PreviewInfo>('POST', `/cards/${id}/preview`, { tunnel }),
   previewStop: (id: string) => call('DELETE', `/cards/${id}/preview`),

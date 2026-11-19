@@ -2713,3 +2713,41 @@ label {
     animation: none;
   }
 }
+
+.tag.cost-tag.over {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.tag.ctx-tag {
+  font-variant-numeric: tabular-nums;
+}
+.tag.ctx-tag.warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.plan-level {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0 0 26px;
+}
+.plan-level select {
+  padding: 2px 6px;
+  font-size: 12.5px;
+}
+.token-settings {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* Agent · model · effort · mode pickers: wrap instead of cutting the labels. */
+.row.pickers > select {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.plan-level select {
+  width: auto;
+  flex: 0 0 auto;
+}

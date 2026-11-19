@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { SendHorizontal, X } from 'lucide-react';
-import { AGENT_LABELS, AGENTS, type AgentId, type Card, type CardMode, type Project } from '@localkan/protocol';
+import { AGENT_LABELS, AGENTS, type AgentId, type Card, type CardMode, type Effort, type Project } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { ImageAttachments } from '../components/ImageAttachments.tsx';
-import { ModelSelect } from '../components/ModelSelect.tsx';
+import { EffortSelect, ModelSelect } from '../components/ModelSelect.tsx';
 import { ParentSelect } from '../components/ParentSelect.tsx';
 import type { ToastApi } from '../components/Toasts.tsx';
 import { appendPhrase, VoiceButton } from '../components/VoiceButton.tsx';
 import { useAgentModels } from '../hooks.ts';
-import { agentText, readLastAgent, readLastModel, saveLastChoice } from '../models.ts';
+import { agentText, readLastAgent, readLastEffort, readLastModel, saveLastChoice } from '../models.ts';
 import { MODE_PROMPT } from '../modes.ts';
 import { deriveTitle } from '../text.ts';
 
@@ -75,6 +75,7 @@ export function NewTask({
   const [interim, setInterim] = useState('');
   const [images, setImages] = useState<File[]>([]);
   const [autoPreview, setAutoPreview] = useState(true);
+  const [effort, setEffort] = useState<Effort | null>(readLastEffort);
   const [mode, setMode] = useState<CardMode>('act');
   const [parentCardId, setParentCardId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -90,13 +91,14 @@ export function NewTask({
     }
     setBusy(true);
     try {
-      saveLastChoice(agent, model);
+      saveLastChoice(agent, model, effort);
       const title = deriveTitle(text);
       const card = await api.createCard(project.id, {
         title,
         prompt: text,
         agent,
         model,
+        effort,
         mode,
         parentCardId,
         autoPreview: autoPreview && mode === 'act',
@@ -106,7 +108,7 @@ export function NewTask({
       }
       if (project.status === 'ready') {
         await api.start(card.id);
-        toasts.info(`Đã giao cho ${agentText({ agent, model }, models)}.`);
+        toasts.info(`Đã giao cho ${agentText({ agent, model, effort }, models)}.`);
       } else {
         toasts.info('Đã tạo việc. Bảng chưa sẵn sàng nên việc nằm ở "Chưa giao".');
       }
@@ -162,6 +164,7 @@ export function NewTask({
             ))}
           </div>
           <ModelSelect className="m-model" agent={agent} models={models} value={model} onChange={setModel} />
+          <EffortSelect className="m-model" value={effort} onChange={setEffort} />
         </section>
 
         <section>

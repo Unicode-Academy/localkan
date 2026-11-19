@@ -55,6 +55,9 @@ pub struct CardUsage {
     /// The agent keeps no record of its usage that can be read.
     #[serde(default)]
     pub unsupported: bool,
+    /// Prompt size of the main agent's latest call: how much context each further step re-reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_tokens: Option<u64>,
 }
 
 /// Claude bills prompts above this (Haiku 5.5) at its long-context rate.
@@ -76,18 +79,26 @@ struct Call {
     cache_write: u64,
     cache_write_long: u64,
     output: u64,
+    /// When the call was made (RFC 3339), and its whole prompt, for the context size.
+    ts: String,
+    prompt: u64,
 }
 
 #[derive(Default)]
 struct Acc {
     buckets: BTreeMap<(String, String), UsageBucket>,
     seen: HashSet<String>,
+    /// Latest call of the main agent (not a subagent): (time, prompt tokens).
+    last: Option<(String, u64)>,
 }
 
 impl Acc {
-    fn add(&mut self, c: &Call) {
+    fn add(&mut self, c: &Call, main: bool) {
         if !c.key.is_empty() && !self.seen.insert(c.key.clone()) {
             return;
+        }
+        if main && !c.ts.is_empty() && self.last.as_ref().is_none_or(|(t, _)| c.ts > *t) {
+            self.last = Some((c.ts.clone(), c.prompt));
         }
         let b = self.buckets.entry((c.model.clone(), c.tier.to_string())).or_insert_with(|| UsageBucket {
             model: c.model.clone(),
@@ -136,6 +147,7 @@ pub async fn read(agent: &str, cwd: &Path) -> CardUsage {
             .await;
             if let Ok((n, acc)) = found {
                 usage.sessions = n;
+                usage.context_tokens = acc.last.map(|(_, p)| p);
                 usage.buckets = acc.buckets.into_values().collect();
             }
         }
@@ -227,11 +239,12 @@ fn claude(cwd: &Path, acc: &mut Acc) -> u32 {
     for f in &files {
         let Some((_, calls)) = calls_of(f, |t| (None, parse_claude(t))) else { continue };
         // Subagent transcripts belong to their parent session.
-        if !f.components().any(|c| c.as_os_str() == "subagents") && !calls.is_empty() {
+        let main = !f.components().any(|c| c.as_os_str() == "subagents");
+        if main && !calls.is_empty() {
             sessions += 1;
         }
         for c in &calls {
-            acc.add(c);
+            acc.add(c, main);
         }
     }
     sessions
@@ -279,6 +292,8 @@ fn parse_claude(text: &str) -> Vec<Call> {
             cache_write: write,
             cache_write_long: write_long,
             output: num(&u["output_tokens"]),
+            ts: v["timestamp"].as_str().unwrap_or("").to_string(),
+            prompt: input + read + write + write_long,
         });
     }
     out
@@ -308,7 +323,7 @@ fn codex(cwd: &Path, acc: &mut Acc) -> u32 {
         }
         sessions += 1;
         for c in &calls {
-            acc.add(c);
+            acc.add(c, true);
         }
     }
     sessions
@@ -337,7 +352,9 @@ fn parse_codex(text: &str) -> (Option<String>, Vec<Call>) {
             }
             "token_usage_record" => {
                 let key = format!("x:{}", p["response_id"].as_str().unwrap_or(""));
-                calls.push(codex_call(&p["usage"], &model, key));
+                let mut c = codex_call(&p["usage"], &model, key);
+                c.ts = v["timestamp"].as_str().unwrap_or("").to_string();
+                calls.push(c);
             }
             "event_msg" if p["type"].as_str() == Some("token_count") => {
                 if p["info"]["total_token_usage"].is_object() {
@@ -370,6 +387,8 @@ fn codex_call(u: &Value, model: &str, key: String) -> Call {
         cache_write: write,
         cache_write_long: 0,
         output: num(&u["output_tokens"]),
+        ts: String::new(),
+        prompt: input,
     }
 }
 
@@ -509,17 +528,19 @@ mod tests {
     fn claude_counts_each_call_once() {
         let line = |id: &str, req: &str, speed: &str| {
             format!(
-                r#"{{"type":"assistant","requestId":"{req}","message":{{"id":"{id}","model":"claude-opus-5-5","usage":{{"input_tokens":10,"cache_creation_input_tokens":300,"cache_read_input_tokens":2000,"output_tokens":50,"cache_creation":{{"ephemeral_5m_input_tokens":100,"ephemeral_1h_input_tokens":200}},"speed":"{speed}"}}}}}}"#
+                r#"{{"type":"assistant","timestamp":"2026-11-15T10:00:00Z","requestId":"{req}","message":{{"id":"{id}","model":"claude-opus-5-5","usage":{{"input_tokens":10,"cache_creation_input_tokens":300,"cache_read_input_tokens":2000,"output_tokens":50,"cache_creation":{{"ephemeral_5m_input_tokens":100,"ephemeral_1h_input_tokens":200}},"speed":"{speed}"}}}}}}"#
             )
         };
         let text = [line("m1", "r1", "standard"), line("m1", "r1", "standard"), line("m2", "r2", "fast"), r#"{"type":"user","message":{"content":"usage"}}"#.into()].join("\n");
         let calls = parse_claude(&text);
         assert_eq!(calls.len(), 3);
         let mut acc = Acc::default();
-        calls.iter().for_each(|c| acc.add(c));
+        calls.iter().for_each(|c| acc.add(c, true));
         let std = &acc.buckets[&("claude-opus-5-5".to_string(), "standard".to_string())];
         assert_eq!((std.requests, std.input, std.cache_write, std.cache_write_long, std.cache_read, std.output), (1, 10, 100, 200, 2000, 50));
         assert_eq!(acc.buckets[&("claude-opus-5-5".to_string(), "fast".to_string())].requests, 1);
+        // Context: the latest main call's whole prompt (10 + 2000 + 100 + 200).
+        assert_eq!(acc.last.map(|(_, p)| p), Some(2310));
     }
 
     #[test]

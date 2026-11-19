@@ -182,7 +182,7 @@ export function CardScreen({
           </section>
         )}
 
-        <UsageSection card={card} />
+        <UsageSection card={card} project={project} />
 
         <button className="m-link" onClick={onFull}>
           Mở chi tiết đầy đủ (nhiệm vụ, terminal, xem trước…)

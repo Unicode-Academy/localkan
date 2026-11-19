@@ -199,6 +199,13 @@ pub struct CardStart {
     /// None: the CLI's default model.
     #[serde(default)]
     pub model: Option<String>,
+    /// Reasoning effort (low | medium | high | xhigh | max); None: the CLI's default.
+    #[serde(default)]
+    pub effort: Option<String>,
+    /// Start Claude without the MCP servers and plugins of the machine's global setup (they
+    /// add tool definitions to every request). None counts as on.
+    #[serde(default)]
+    pub lean: Option<bool>,
     pub mode: String,
     #[serde(default)]
     pub attachments: Vec<AttachmentRef>,

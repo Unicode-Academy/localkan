@@ -14,6 +14,8 @@ import type { Collection, Db } from 'mongodb';
 import webpush from 'web-push';
 import {
   AGENT_LABELS,
+  formatUsd,
+  summarizeUsage,
   DEFAULT_NOTIFY_PREFS,
   type Card,
   type NotifyKind,
@@ -171,7 +173,7 @@ export class Push {
 }
 
 /** What happened to a card, from a bridge update. */
-export type CardEventName = 'agent_done' | 'agent_failed' | 'input' | 'ci_failed' | 'ci_passed' | 'pr_merged';
+export type CardEventName = 'agent_done' | 'agent_failed' | 'input' | 'ci_failed' | 'ci_passed' | 'pr_merged' | 'over_budget';
 
 const EVENT_KIND: Record<CardEventName, NotifyKind> = {
   agent_done: 'done',
@@ -180,6 +182,7 @@ const EVENT_KIND: Record<CardEventName, NotifyKind> = {
   ci_failed: 'failed',
   ci_passed: 'done',
   pr_merged: 'done',
+  over_budget: 'failed',
 };
 
 export function eventKind(e: CardEventName): NotifyKind {
@@ -226,12 +229,21 @@ function ciTotals(card: Card) {
   );
 }
 
-export function cardPayload(event: CardEventName, card: Card, projectName: string): PushPayload {
+export function cardPayload(event: CardEventName, card: Card, projectName: string, budgetUsd?: number | null): PushPayload {
   const kind = eventKind(event);
   const where = `${projectName} · ${AGENT_LABELS[card.agent]}`;
   const base = { kind, url: `/#card/${card.id}`, tag: `card-${card.id}` };
   const pr = card.pr ?? openPrs(card)[0] ?? null;
   const ci = ciTotals(card);
+  if (event === 'over_budget') {
+    const usd = summarizeUsage([card.usage]).usd;
+    const stopped = card.runState === 'stopped';
+    return {
+      ...base,
+      title: `💸 Vượt ngân sách: ${card.title}`,
+      body: clip(`${where} — chi phí ước tính ${formatUsd(usd)}${budgetUsd ? ` / ngân sách ${formatUsd(budgetUsd)}` : ''}${stopped ? '. Đã dừng agent.' : '.'}`),
+    };
+  }
   if (event === 'pr_merged') {
     return { ...base, title: `⑂ Đã merge PR: ${card.title}`, body: clip(card.summary ? `${projectName} — ${card.summary}` : projectName) };
   }

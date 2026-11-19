@@ -27,6 +27,8 @@ export interface CardUsage {
   sessions: number;
   /** The agent keeps no record of its usage that can be read (Antigravity). */
   unsupported: boolean;
+  /** Prompt size of the main agent's latest call: the context each further step re-reads. */
+  contextTokens?: number;
 }
 
 /** USD per million tokens. */

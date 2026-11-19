@@ -9,6 +9,7 @@ import {
   CARD_STATUS_LABELS,
   type CardMode,
   type DiffResult,
+  type Effort,
   type FinishAction,
   type GitFlow,
   type LogLine,
@@ -23,7 +24,7 @@ import { agentText, readLastModel } from '../models.ts';
 import { addedText, clockLabel, listChoices, splitOptions } from '../text.ts';
 import { Markdown } from './Markdown.tsx';
 import { PlanView } from './PlanView.tsx';
-import { ModelSelect } from './ModelSelect.tsx';
+import { EffortSelect, ModelSelect } from './ModelSelect.tsx';
 import { Dialog } from './Dialog.tsx';
 import { DiffView } from './DiffView.tsx';
 import { ImageAttachments, imagesFromClipboard, acceptImages } from './ImageAttachments.tsx';
@@ -137,7 +138,7 @@ export function CardPanel({
           </div>
         )}
 
-        <UsageSection card={card} />
+        <UsageSection card={card} project={project} />
 
         {card.waiting && <WaitingBox card={card} cards={cards} project={project} toasts={toasts} busy={busy} run={run} />}
 
@@ -418,6 +419,7 @@ function TaskTab({ card, cards, models, toasts }: { card: Card; cards: Card[]; m
   const [interim, setInterim] = useState('');
   const [agent, setAgent] = useState<AgentId>(card.agent);
   const [model, setModel] = useState<string | null>(card.model);
+  const [effort, setEffort] = useState<Effort | null>(card.effort);
   const [mode, setMode] = useState<CardMode>(card.mode);
   const [uploading, setUploading] = useState(false);
   const [parentCardId, setParentCardId] = useState<string | null>(card.parentCardId);
@@ -495,7 +497,7 @@ function TaskTab({ card, cards, models, toasts }: { card: Card; cards: Card[]; m
         />
       </div>
       <ParentSelect cards={cards} value={parentCardId} onChange={setParentCardId} excludeId={card.id} />
-      <div className="row">
+      <div className="row wrap pickers">
         <select
           value={agent}
           onChange={(e) => {
@@ -512,6 +514,7 @@ function TaskTab({ card, cards, models, toasts }: { card: Card; cards: Card[]; m
           ))}
         </select>
         <ModelSelect agent={agent} models={models} value={model} onChange={setModel} />
+        <EffortSelect value={effort} onChange={setEffort} />
         <select value={mode} onChange={(e) => setMode(e.target.value as CardMode)} aria-label="Chế độ">
           {CARD_MODES.map((m) => (
             <option key={m} value={m}>
@@ -525,7 +528,7 @@ function TaskTab({ card, cards, models, toasts }: { card: Card; cards: Card[]; m
         disabled={!dirty}
         onClick={() =>
           api
-            .updateCard(card.id, { title, prompt, agent, model, mode, parentCardId })
+            .updateCard(card.id, { title, prompt, agent, model, effort, mode, parentCardId })
             .then(() => toasts.info('Đã lưu.'), (e) => toasts.error(e.message))
         }
       >
@@ -681,7 +684,7 @@ function ReviewBar({
               ? 'Muốn đổi gì trong kế hoạch?'
               : card.mode === 'ask'
                 ? 'Hỏi thêm…'
-                : 'Cần agent sửa gì thêm?'
+                : 'Cần agent sửa gì thêm? Gom mọi ý vào một lần cho đỡ tốn token.'
         }
         title="Có thể bấm vào một dòng trong tab Diff để nhận xét ngay dòng đó"
         aria-label="Yêu cầu sửa"

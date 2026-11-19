@@ -25,6 +25,12 @@ pub const EXCLUDES: [&str; 5] = [
 /// The file an agent writes in its worktree before reporting done.
 pub const AGENT_HANDOFF_FILE: &str = ".localkan/handoff.md";
 
+/// What a question card (`answer.md`) or a planning card (`plan.json`) produces. The web reads
+/// them from the card's diff, so they are never excluded from git; but a repo whose
+/// `.gitignore` hides `.localkan/` (agents often add it) would drop them, so the diff adds
+/// them back from the worktree.
+pub const AGENT_OUTPUT_FILES: [&str; 2] = [".localkan/plan.json", ".localkan/answer.md"];
+
 const MEMORY_MAX_CHARS: usize = 12_000;
 const PARENT_MAX_CHARS: usize = 6_000;
 const RECENT_NOTES: usize = 8;

@@ -75,7 +75,33 @@ export const PLAN_FILE = '.localkan/plan.json';
 export interface PlanTask {
   title: string;
   prompt: string;
+  /** How demanding the task is for an agent, as the planner judged it; picks a cheaper model
+   *  and a lower effort for simpler tasks on import. */
+  level?: TaskLevel;
 }
+
+export type TaskLevel = 'simple' | 'normal' | 'hard';
+export const TASK_LEVELS: readonly TaskLevel[] = ['simple', 'normal', 'hard'];
+
+/** Reasoning effort every agent CLI takes; more effort, more thinking tokens. */
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export const EFFORTS: readonly Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+export const EFFORT_LABELS: Record<Effort, string> = {
+  low: 'Thấp',
+  medium: 'Vừa',
+  high: 'Cao',
+  xhigh: 'Rất cao',
+  max: 'Tối đa',
+};
+
+/** A board's limits on what the agents spend. */
+export interface BudgetSettings {
+  /** Warn when one card's estimated cost passes this (USD); null: no limit. */
+  cardUsd: number | null;
+  /** Also stop the agent of a card that passes it. */
+  stop: boolean;
+}
+export const DEFAULT_BUDGET: BudgetSettings = { cardUsd: null, stop: false };
 
 /** The content of `PLAN_FILE`. */
 export interface Plan {
@@ -114,7 +140,14 @@ export function parsePlan(raw: string | null | undefined): PlanRead | null {
   }
   const obj = (data ?? {}) as { goal?: unknown; tasks?: unknown };
   const tasks: PlanTask[] = (Array.isArray(obj.tasks) ? obj.tasks : [])
-    .map((t) => ({ title: String((t as PlanTask)?.title ?? '').trim(), prompt: String((t as PlanTask)?.prompt ?? '').trim() }))
+    .map((t) => {
+      const level = String((t as PlanTask)?.level ?? '').trim().toLowerCase() as TaskLevel;
+      return {
+        title: String((t as PlanTask)?.title ?? '').trim(),
+        prompt: String((t as PlanTask)?.prompt ?? '').trim(),
+        ...(TASK_LEVELS.includes(level) ? { level } : {}),
+      };
+    })
     .filter((t) => t.title);
   if (!tasks.length) return { error: `${PLAN_FILE} chưa có việc nào (mục "tasks").`, raw };
   return { plan: { goal: String(obj.goal ?? '').trim(), tasks } };
@@ -240,6 +273,8 @@ export interface Card {
   agent: AgentId;
   /** Model passed to the agent CLI; null runs the CLI's default. */
   model: string | null;
+  /** Reasoning effort the agent starts with; null: the CLI's default. */
+  effort: Effort | null;
   mode: CardMode;
   status: CardStatus;
   position: number;
@@ -268,6 +303,8 @@ export interface Card {
   planText: string | null;
   /** Tokens the agent spent on this card, per model; null until first measured. */
   usage: CardUsage | null;
+  /** When the card passed its board's budget (warned, and stopped if the board says so). */
+  overBudgetAt: string | null;
   attachments: Attachment[];
   /** When the card entered its current status (column); columns other than To Do list cards
    *  in this order, newest last. */
@@ -294,6 +331,9 @@ export interface Project {
   repos: ProjectRepo[];
   /** Multi-repo board: git settings per repo, by repo name. */
   repoGit: Record<string, GitSettings>;
+  /** Start Claude without the machine's global MCP servers and plugins (fewer tokens per step). */
+  leanAgents: boolean;
+  budget: BudgetSettings;
   createdAt: string;
 }
 
@@ -519,6 +559,9 @@ export interface BridgeMethods {
       agent: AgentId;
       /** null: the CLI's default model. */
       model: string | null;
+      effort: Effort | null;
+      /** Start Claude without the global MCP servers and plugins. */
+      lean: boolean;
       mode: CardMode;
       /** Images to copy into the worktree; the bridge downloads them from the server. */
       attachments: Pick<Attachment, 'id' | 'name' | 'mime'>[];

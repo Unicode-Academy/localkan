@@ -75,6 +75,12 @@ pub struct CardRt {
     pub agent: String,
     /// Model the agent CLI is started with; None runs its default.
     pub model: Option<String>,
+    /// Reasoning effort the agent CLI is started with; None runs its default.
+    #[serde(default)]
+    pub effort: Option<String>,
+    /// Start Claude without the global MCP servers and plugins.
+    #[serde(default)]
+    pub lean: bool,
     pub mode: String,
     pub worktree_path: Option<String>,
     pub branch: Option<String>,
@@ -702,6 +708,8 @@ impl Engine {
             title: p.title.clone(),
             agent: p.agent.clone(),
             model: p.model.clone(),
+            effort: p.effort.clone(),
+            lean: p.lean.unwrap_or(true),
             mode: p.mode.clone(),
             worktree_path: Some(path.clone()),
             branch: branch.clone(),
@@ -793,8 +801,11 @@ impl Engine {
         if let Some(m) = model.filter(|m| !crate::models::valid_id(m)) {
             bail!("Tên model không hợp lệ: {m}");
         }
-        // Orca takes `--model` only for Claude and Codex: agy with a model is launched here too.
-        let prelaunch = PRELAUNCH_AGENTS.contains(&card.agent.as_str()) || (model.is_some() && card.agent != "codex");
+        let effort = card.effort.as_deref().filter(|e| crate::models::valid_effort(e));
+        // Orca takes `--model` / `--effort` only for Claude and Codex: agy with either is
+        // launched here too.
+        let prelaunch =
+            PRELAUNCH_AGENTS.contains(&card.agent.as_str()) || ((model.is_some() || effort.is_some()) && card.agent != "codex");
         if prelaunch && terminal.is_none() && retry.is_none() {
             // Claude can open startup dialogs (folder trust, bypass-permissions warning) whose
             // default answer is "No, exit". Orca would type the task into them and Claude
@@ -814,6 +825,9 @@ impl Engine {
                         args.extend(["--agent", &card.agent]);
                         if let Some(m) = model {
                             args.extend(["--model", m]);
+                        }
+                        if let Some(e) = effort {
+                            args.extend(["--effort", e]);
                         }
                     }
                 }
@@ -1434,11 +1448,15 @@ impl Engine {
     async fn prelaunch_agent(&self, card: &CardRt, wt: &str, spec: &str) -> Result<()> {
         let orca = self.orca()?;
         let title = format!("{} · {}", card.agent, card.title);
-        // The bare agent name lets Orca add the user's launch arguments itself; with a model the
-        // command is built from the same settings.
-        let launch_cmd = match card.model.as_deref().filter(|m| !m.is_empty()) {
-            Some(m) => crate::models::launch_command(&card.agent, m),
-            None => crate::models::binary(&card.agent).to_string(),
+        // The bare agent name lets Orca add the user's launch arguments itself; with a model,
+        // an effort or the lean Claude setup the command is built from the same settings.
+        let model = card.model.as_deref().filter(|m| !m.is_empty() && crate::models::valid_id(m));
+        let effort = card.effort.as_deref().filter(|e| crate::models::valid_effort(e));
+        let lean = card.lean && card.agent == "claude";
+        let launch_cmd = if model.is_some() || effort.is_some() || lean {
+            crate::models::launch_command(&card.agent, model, effort, lean)
+        } else {
+            crate::models::binary(&card.agent).to_string()
         };
         let t = orca
             .call(&["terminal", "create", "--worktree", &format!("path:{wt}"), "--title", &title, "--command", &launch_cmd])
@@ -1593,6 +1611,8 @@ impl Engine {
             c.pending_spec = None;
             c.agent = p.agent.clone();
             c.model = p.model.clone();
+            c.effort = p.effort.clone();
+            c.lean = p.lean.unwrap_or(true);
             c.mode = p.mode.clone();
             c.title = p.title.clone();
         })
@@ -1655,12 +1675,12 @@ impl Engine {
 
     async fn diff(&self, card_id: &str) -> Result<Value> {
         let card = self.card(card_id).await?;
-        if !card.children.is_empty() {
-            return Ok(serde_json::to_value(self.multi_diff(&card).await?)?);
-        }
         let wt = card.worktree_path.clone().ok_or_else(|| anyhow!("Thẻ chưa có worktree"))?;
-        if Path::new(&wt).exists() {
-            return Ok(serde_json::to_value(git::diff(&wt, &card.base_ref).await?)?);
+        if !card.children.is_empty() || Path::new(&wt).exists() {
+            let mut d = if card.children.is_empty() { git::diff(&wt, &card.base_ref).await? } else { self.multi_diff(&card).await? };
+            // The plan / answer of a read-only card, even when git ignores `.localkan/`.
+            git::add_new_files(&mut d, &wt, &context::AGENT_OUTPUT_FILES).await;
+            return Ok(serde_json::to_value(d)?);
         }
         // Finished task: the worktree is gone, read the changes back from git history.
         Ok(serde_json::to_value(self.finished_diff(&card).await?)?)
@@ -2884,6 +2904,7 @@ const COMMON_RULES: &str = "Rules from Localkan (the reviewer's Kanban board):
 - If you need a decision from the human reviewer, use the `orca orchestration ask` command from your instructions. Do not open interactive prompts.
 - To open or check web pages, use Orca's built-in browser through the `orca` CLI. It is shared with the reviewer and keeps their sign-ins: `orca tab create --url <url> --json` (keep the browserPageId), then `orca snapshot --page <id>`, `orca click --element @e1 --page <id>`, `orca fill --element @e2 --value <text> --page <id>`, `orca screenshot --page <id>`, `orca eval --expression <js> --page <id>`; `orca skills get orca-cli` has the full browser reference. Do not start a separate browser (Playwright, Puppeteer, Chrome DevTools, headless Chrome) for pages that need a signed-in session: it would not have the sign-in.
 - Never type passwords, one-time codes or other credentials, and never look for them in files, env vars or keychains, except test accounts for this project's own local app that the task or project memory gives you. When a page needs a sign-in, keep it open in its Orca tab and run the `orca orchestration ask` command from your instructions with `--timeout-ms 3600000` and a question that starts with `[LOGIN]`, then the page URL, then which site or account is needed (for example `[LOGIN] https://admin.example.com/login needs an admin account`). The reviewer signs in remotely in that tab. When the reply arrives, reload the page and continue. If the ask times out, resume it with its message id instead of asking again.
+- Keep your context small: everything you read stays in it and is re-read on every step, which is what the task costs. Before exploring, use the project memory and handoff notes above. For broad searches (where something lives, surveying many files), delegate to a subagent when your CLI has one (in Claude Code, the Explore agent) and keep only its findings. Read the parts of large files you need, not whole files. Run installs, builds and tests with quiet options and keep only the end of long output or the failures (for example `2>&1 | tail -n 40`).
 - Before you report done, write a handoff note to `.localkan/handoff.md` (Markdown, at most about 300 words): what you changed and why, decisions you made, anything the next task must know (gotchas, follow-ups), and the main files touched. Later tasks on this project read it. Git ignores it.
 - When finished, send worker_done exactly as instructed, with a short summary of what you changed and how you verified it.
 - The reviewer reads Vietnamese: write everything meant for them in Vietnamese (the worker_done summary, `.localkan/handoff.md`, questions you ask, answer and plan files). Keep code, identifiers, file paths and commands as they are.";
@@ -2896,7 +2917,8 @@ const RESUME_AFTER_LIMIT: &str = "Your usage limit has reset. Continue the task 
 
 const PLAN_RULES: &str = "- This card is PLANNING, not implementation. Do not modify project files; read the code, docs and project notes as much as you need to plan well.
 - First make sure you understand what the reviewer wants. When the goal, scope, constraints or priorities are unclear, ask with the `orca orchestration ask` command from your instructions (with `--timeout-ms 3600000`): one focused question at a time, with concrete options when that helps, then wait for the reply. Ask only what changes the plan; skip what the code already answers. If an ask times out, resume it with its message id instead of asking again.
-- Then write the plan to `.localkan/plan.json` (create the folder) as UTF-8 JSON in exactly this shape: {\"goal\": \"one or two sentences\", \"tasks\": [{\"title\": \"short imperative title, at most 70 characters\", \"prompt\": \"what to do, where in the code, constraints, and how to check it is done\"}]}. No other keys, no Markdown around it.
+- Then write the plan to `.localkan/plan.json` (create the folder) as UTF-8 JSON in exactly this shape: {\"goal\": \"one or two sentences\", \"tasks\": [{\"title\": \"short imperative title, at most 70 characters\", \"prompt\": \"what to do, where in the code, constraints, and how to check it is done\", \"level\": \"simple | normal | hard\"}]}. No other keys, no Markdown around it.
+- `level` is how demanding the task is for an AI coding agent, so the reviewer can give simpler tasks a cheaper model: `simple` (mechanical: rename, copy a pattern, small fix, docs, seed data), `normal` (an ordinary feature or fix), `hard` (architecture, tricky bugs, changes across many parts). Name the files to touch in each prompt, so the agent doing it need not search for them.
 - Each task becomes one Kanban card that one agent finishes in its own worktree and the reviewer reviews on its own. List them in the order they should be done, and say in a task's prompt when it builds on an earlier task. Usually 3 to 10 tasks.
 - On a follow-up, update `.localkan/plan.json` as asked (ask again if needed), then report done again.";
 

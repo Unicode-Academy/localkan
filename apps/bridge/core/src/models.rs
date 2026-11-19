@@ -160,20 +160,61 @@ fn orca_settings() -> Option<Value> {
     Some(data["settings"].clone())
 }
 
-/// Terminal command that starts `agent` with `model` the way Orca would start it otherwise.
-pub fn launch_command(agent: &str, model: &str) -> String {
-    let (cmd, args) = orca_launch(agent);
-    compose(&cmd, &args, model)
+/// Reasoning effort levels every agent CLI takes (Claude, Codex, Grok, Antigravity).
+pub fn valid_effort(e: &str) -> bool {
+    matches!(e, "low" | "medium" | "high" | "xhigh" | "max")
 }
 
-fn compose(cmd: &str, args: &str, model: &str) -> String {
+/// Terminal command that starts `agent` the way Orca would start it otherwise, plus a model,
+/// an effort, and for Claude (`lean`) no MCP servers or plugins from the machine's global
+/// setup: each adds tool definitions or skills that every request of the task carries.
+pub fn launch_command(agent: &str, model: Option<&str>, effort: Option<&str>, lean: bool) -> String {
+    let (cmd, args) = orca_launch(agent);
+    let lean = (lean && agent == "claude").then(|| claude_lean_args(&global_claude_plugins()));
+    compose(&cmd, &args, model, effort, lean.as_deref())
+}
+
+fn compose(cmd: &str, args: &str, model: Option<&str>, effort: Option<&str>, extra: Option<&str>) -> String {
     let mut out = cmd.to_string();
     if !args.is_empty() {
         out.push(' ');
         out.push_str(args);
     }
     // `valid_id` already rules out quotes and spaces; quoting keeps `[1m]`-style ids literal.
-    out.push_str(&format!(" --model '{model}'"));
+    if let Some(m) = model {
+        out.push_str(&format!(" --model '{m}'"));
+    }
+    if let Some(e) = effort.filter(|e| valid_effort(e)) {
+        out.push_str(&format!(" --effort {e}"));
+    }
+    if let Some(x) = extra.filter(|x| !x.is_empty()) {
+        out.push(' ');
+        out.push_str(x);
+    }
+    out
+}
+
+/// Plugins enabled in the user's global Claude Code settings.
+fn global_claude_plugins() -> Vec<String> {
+    let path = std::env::var_os("CLAUDE_CONFIG_DIR").map(std::path::PathBuf::from).unwrap_or_else(|| paths::home().join(".claude"));
+    let Ok(text) = std::fs::read_to_string(path.join("settings.json")) else { return Vec::new() };
+    let Ok(v) = serde_json::from_str::<Value>(&text) else { return Vec::new() };
+    v["enabledPlugins"]
+        .as_object()
+        .map(|m| m.iter().filter(|(_, on)| on.as_bool() == Some(true)).map(|(k, _)| k.clone()).collect())
+        .unwrap_or_default()
+}
+
+/// `--strict-mcp-config` (no MCP server unless given) and settings that turn the global
+/// plugins off for this session. The project's own skills and CLAUDE.md still load.
+fn claude_lean_args(plugins: &[String]) -> String {
+    let mut out = String::from("--strict-mcp-config");
+    let safe = |p: &&String| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || "@._-/".contains(c));
+    let off: serde_json::Map<String, Value> = plugins.iter().filter(safe).map(|p| (p.clone(), Value::Bool(false))).collect();
+    if !off.is_empty() {
+        let json = serde_json::json!({ "enabledPlugins": off }).to_string();
+        out.push_str(&format!(" --settings '{json}'"));
+    }
     out
 }
 
@@ -222,8 +263,17 @@ mod tests {
 
     #[test]
     fn composes_launch_command() {
-        assert_eq!(compose("claude", "--dangerously-skip-permissions", "opus"), "claude --dangerously-skip-permissions --model 'opus'");
-        assert_eq!(compose("agy", "", "gemini-3.8-flash-low"), "agy --model 'gemini-3.8-flash-low'");
+        assert_eq!(compose("claude", "--dangerously-skip-permissions", Some("opus"), None, None), "claude --dangerously-skip-permissions --model 'opus'");
+        assert_eq!(compose("agy", "", Some("gemini-3.8-flash-low"), None, None), "agy --model 'gemini-3.8-flash-low'");
+        assert_eq!(compose("grok", "", None, Some("high"), None), "grok --effort high");
+        assert_eq!(compose("claude", "", None, Some("bogus; rm"), None), "claude");
         assert_eq!(binary("antigravity"), "agy");
+        let lean = claude_lean_args(&["stitch-build@google-labs".into(), "bad'name".into()]);
+        assert_eq!(lean, r#"--strict-mcp-config --settings '{"enabledPlugins":{"stitch-build@google-labs":false}}'"#);
+        assert_eq!(claude_lean_args(&[]), "--strict-mcp-config");
+        assert_eq!(
+            compose("claude", "--x", Some("sonnet"), Some("medium"), Some(&lean)),
+            r#"claude --x --model 'sonnet' --effort medium --strict-mcp-config --settings '{"enabledPlugins":{"stitch-build@google-labs":false}}'"#
+        );
     }
 }

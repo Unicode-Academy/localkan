@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from 'react';
-import { AGENT_LABELS, AGENTS, CARD_MODES, type AgentId, type Card, type CardMode } from '@localkan/protocol';
+import { AGENT_LABELS, AGENTS, CARD_MODES, type AgentId, type Card, type CardMode, type Effort } from '@localkan/protocol';
 import { api } from '../api.ts';
 import { useAgentModels } from '../hooks.ts';
 import { MODE_LABELS, MODE_PROMPT } from '../modes.ts';
-import { readLastAgent, readLastModel, saveLastChoice } from '../models.ts';
+import { readLastAgent, readLastEffort, readLastModel, saveLastChoice } from '../models.ts';
 import { deriveTitle } from '../text.ts';
 import { Dialog } from './Dialog.tsx';
 import { ImageAttachments, imagesFromClipboard, acceptImages } from './ImageAttachments.tsx';
-import { ModelSelect } from './ModelSelect.tsx';
+import { EffortSelect, ModelSelect } from './ModelSelect.tsx';
 import { ParentSelect } from './ParentSelect.tsx';
 import type { ToastApi } from './Toasts.tsx';
 import { appendPhrase, VoiceButton } from './VoiceButton.tsx';
@@ -34,6 +34,7 @@ export function NewCardDialog({
   const models = useAgentModels(deviceId);
   const [agent, setAgent] = useState<AgentId>(readLastAgent);
   const [model, setModel] = useState<string | null>(() => readLastModel(agent, models));
+  const [effort, setEffort] = useState<Effort | null>(readLastEffort);
   const [mode, setMode] = useState<CardMode>(initialMode);
   const [images, setImages] = useState<File[]>([]);
   const [parentCardId, setParentCardId] = useState<string | null>(null);
@@ -49,8 +50,8 @@ export function NewCardDialog({
     }
     setBusy(true);
     try {
-      const card = await api.createCard(projectId, { title: finalTitle, prompt, agent, model, mode, parentCardId });
-      saveLastChoice(agent, model);
+      const card = await api.createCard(projectId, { title: finalTitle, prompt, agent, model, effort, mode, parentCardId });
+      saveLastChoice(agent, model, effort);
       if (images.length) {
         try {
           await api.uploadAttachments(card.id, images);
@@ -114,7 +115,7 @@ export function NewCardDialog({
           />
         </div>
         <ParentSelect cards={cards} value={parentCardId} onChange={setParentCardId} />
-        <div className="row">
+        <div className="row wrap pickers">
           <select
             value={agent}
             onChange={(e) => {
@@ -131,6 +132,7 @@ export function NewCardDialog({
             ))}
           </select>
           <ModelSelect agent={agent} models={models} value={model} onChange={setModel} />
+          <EffortSelect value={effort} onChange={setEffort} />
           <select value={mode} onChange={(e) => setMode(e.target.value as CardMode)} aria-label="Chế độ">
             {CARD_MODES.map((m) => (
               <option key={m} value={m}>

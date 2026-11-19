@@ -14,6 +14,7 @@ import type {
   ServerToWeb,
   Card,
 } from '@localkan/protocol';
+import { summarizeUsage } from '@localkan/protocol';
 import { cardEvent, type CardEventName } from './push.ts';
 import { type Store, toDevice } from './store.ts';
 
@@ -189,6 +190,7 @@ export class Hub {
     const { cardId, ...rest } = patch;
     const card = await this.store.updateCard(cardId, rest);
     if (card) this.sendToUser(owned.userId, { type: 'card.updated', card });
+    if (card && rest.usage) await this.checkBudget(conn.deviceId, owned.userId, card).catch((err) => console.error('budget:', err));
     // Notifications: done, needs you, failed (only on the transition, not on re-syncs).
     const event = card ? cardEvent(owned.card, card) : null;
     if (card && event) this.onCardEvent?.(owned.userId, event, card);
@@ -200,6 +202,33 @@ export class Hub {
         console.error('auto preview:', (err as Error).message),
       );
     }
+  }
+
+  /** A card's estimated cost passed its board's budget: flag it once per budget (raising the
+   *  budget re-arms it), tell the user, and stop the agent when the board says so. */
+  private async checkBudget(deviceId: string, userId: string, card: Card) {
+    const project = await this.store.getProject(card.projectId);
+    const limit = project?.budget.cardUsd;
+    if (!project || !limit || card.status === 'done') return;
+    const usd = summarizeUsage([card.usage]).usd;
+    if (usd <= limit) return;
+    const flagged = await this.store.overBudgetLimit(card.id);
+    if (flagged !== null && flagged >= limit) return;
+    let updated = await this.store.updateCard(card.id, { overBudgetAt: new Date().toISOString(), overBudgetLimit: limit });
+    const running = card.status === 'in_progress' || card.status === 'needs_input';
+    let stopped = false;
+    if (project.budget.stop && running) {
+      try {
+        await this.request(deviceId, 'card.stop', { cardId: card.id });
+        stopped = true;
+      } catch (err) {
+        console.error('budget stop:', (err as Error).message);
+      }
+    }
+    if (!updated) return;
+    this.sendToUser(userId, { type: 'card.updated', card: updated });
+    // The bridge's "stopped" state may still be on its way; the message says it either way.
+    this.onCardEvent?.(userId, 'over_budget', stopped ? { ...updated, runState: 'stopped' } : updated);
   }
 
   private async touchDevice(deviceId: string) {

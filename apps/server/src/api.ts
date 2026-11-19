@@ -10,6 +10,8 @@ import {
   type AgentId,
   type Card,
   type CardMode,
+  type Effort,
+  EFFORTS,
   type FinishAction,
   type ReviewComment,
   type TerminalKey,
@@ -296,7 +298,15 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
 
   api.patch('/projects/:id', async (c) => {
     const p = await ownProject(c, c.req.param('id'));
-    const b = await body<{ name?: string }>(c);
+    const b = await body<{ name?: string; leanAgents?: boolean; budget?: { cardUsd?: unknown; stop?: unknown } }>(c);
+    if (b.leanAgents !== undefined) await store.updateProject(p.id, { leanAgents: b.leanAgents === true });
+    if (b.budget !== undefined) {
+      const raw = b.budget?.cardUsd;
+      const cardUsd = raw === null || raw === undefined || raw === '' ? null : Number(raw);
+      if (cardUsd !== null && !(Number.isFinite(cardUsd) && cardUsd > 0 && cardUsd <= 10_000))
+        throw new HttpError(400, 'Ngân sách mỗi thẻ phải là số đô lớn hơn 0.');
+      await store.updateProject(p.id, { budget: { cardUsd, stop: b.budget?.stop === true } });
+    }
     if (b.name !== undefined) {
       const name = String(b.name).trim();
       if (!name) throw new HttpError(400, 'Tên bảng không được để trống.');
@@ -454,6 +464,11 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     return agent as AgentId;
   };
   const parseMode = (mode: unknown): CardMode => (mode === 'ask' || mode === 'plan' ? mode : 'act');
+  const parseEffort = (effort: unknown): Effort | null => {
+    if (effort === null || effort === undefined || effort === '') return null;
+    if (!EFFORTS.includes(effort as Effort)) throw new HttpError(400, 'Mức effort không hợp lệ.');
+    return effort as Effort;
+  };
   // The id ends up in the agent's launch command on the bridge: a strict character set.
   const parseModel = (model: unknown): string | null => {
     if (model === null || model === undefined || model === '') return null;
@@ -503,6 +518,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       prompt?: string;
       agent?: string;
       model?: string | null;
+      effort?: string | null;
       mode?: string;
       parentCardId?: string | null;
       autoPreview?: boolean;
@@ -517,6 +533,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       prompt: (b.prompt ?? '').trim(),
       agent: parseAgent(b.agent ?? 'claude'),
       model: parseModel(b.model),
+      effort: parseEffort(b.effort),
       mode: parseMode(b.mode),
       position: (await store.maxTodoPosition(p.id)) + 1,
       parentCardId,
@@ -529,14 +546,22 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
   api.post('/cards/:id/plan/import', async (c) => {
     const { card, userId } = await ownCard(c, c.req.param('id'));
     if (card.mode !== 'plan') throw new HttpError(400, 'Thẻ này không phải thẻ lập kế hoạch.');
-    const b = await body<{ tasks?: { title?: unknown; prompt?: unknown }[]; agent?: string; model?: string | null }>(c);
+    // Each task may carry its own model and effort (picked from its level on the web).
+    type In = { title?: unknown; prompt?: unknown; model?: unknown; effort?: unknown };
+    const b = await body<{ tasks?: In[]; agent?: string; model?: string | null; effort?: string | null }>(c);
+    const agent = parseAgent(b.agent ?? 'claude');
+    const model = parseModel(b.model);
+    const effort = parseEffort(b.effort);
     const tasks = (Array.isArray(b.tasks) ? b.tasks : [])
-      .map((t) => ({ title: String(t?.title ?? '').trim().slice(0, 200), prompt: String(t?.prompt ?? '').trim().slice(0, 20000) }))
+      .map((t) => ({
+        title: String(t?.title ?? '').trim().slice(0, 200),
+        prompt: String(t?.prompt ?? '').trim().slice(0, 20000),
+        model: t?.model === undefined ? model : parseModel(t.model),
+        effort: t?.effort === undefined ? effort : parseEffort(t.effort),
+      }))
       .filter((t) => t.title);
     if (!tasks.length) throw new HttpError(400, 'Chưa chọn việc nào để nhập.');
     if (tasks.length > 50) throw new HttpError(400, 'Mỗi lần nhập tối đa 50 việc.');
-    const agent = parseAgent(b.agent ?? 'claude');
-    const model = parseModel(b.model);
     let position = await store.maxTodoPosition(card.projectId);
     for (const t of tasks) {
       const id = randomUUID();
@@ -546,7 +571,8 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
         title: t.title,
         prompt: t.prompt,
         agent,
-        model,
+        model: t.model,
+        effort: t.effort,
         mode: 'act',
         position: ++position,
         parentCardId: null,
@@ -573,7 +599,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
 
   api.patch('/cards/:id', async (c) => {
     const { card } = await ownCard(c, c.req.param('id'));
-    const b = await body<Partial<Pick<Card, 'title' | 'prompt' | 'agent' | 'model' | 'mode' | 'position' | 'parentCardId' | 'autoPreview'>>>(c);
+    const b = await body<Partial<Pick<Card, 'title' | 'prompt' | 'agent' | 'model' | 'effort' | 'mode' | 'position' | 'parentCardId' | 'autoPreview'>>>(c);
     const patch: CardPatch = {};
     if (b.position !== undefined) patch.position = Number(b.position);
     if (b.autoPreview !== undefined) patch.autoPreview = b.autoPreview === true;
@@ -585,6 +611,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       // A model belongs to one agent: switching agents without naming a model resets it.
       if (b.model !== undefined) patch.model = parseModel(b.model);
       else if (patch.agent && patch.agent !== card.agent) patch.model = null;
+      if (b.effort !== undefined) patch.effort = parseEffort(b.effort);
       if (b.mode !== undefined) patch.mode = parseMode(b.mode);
       if (b.parentCardId !== undefined)
         patch.parentCardId = b.parentCardId ? await checkParent(card.projectId, b.parentCardId, card.id) : null;
@@ -662,6 +689,8 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
         prompt: card.prompt,
         agent: card.agent,
         model: card.model,
+        effort: card.effort,
+        lean: project.leanAgents,
         mode: card.mode,
         attachments: card.attachments.map(({ id, name, mime }) => ({ id, name, mime })),
         parent: await parentRef(card),
@@ -694,6 +723,8 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
         prompt: card.prompt,
         agent: card.agent,
         model: card.model,
+        effort: card.effort,
+        lean: project.leanAgents,
         mode: card.mode,
         attachments: card.attachments.map(({ id, name, mime }) => ({ id, name, mime })),
         parent: await parentRef(card),

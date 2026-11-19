@@ -159,6 +159,25 @@ async fn diff_spec(dir: &str, spec: &[&str], untracked: bool, label: &str) -> Re
     Ok(DiffResult { base_ref: label.to_string(), files, patch: redact_patch(&patch) })
 }
 
+/// Add `paths` under `dir` to the diff as new files when they exist but are not in it yet:
+/// files git ignores (a `.gitignore` entry) or that live outside any repo of the diff (the
+/// task folder of a multi-repo card).
+pub async fn add_new_files(d: &mut DiffResult, dir: &str, paths: &[&str]) {
+    for path in paths {
+        if d.files.iter().any(|f| f.path == *path) || !std::path::Path::new(dir).join(path).is_file() {
+            continue;
+        }
+        // `--no-index` compares plain files, inside a repo or not; exit 1 means "differ".
+        let Ok(out) = raw(dir, &["diff", "--no-color", "--no-index", "--", "/dev/null", path]).await else { continue };
+        if out.stdout.is_empty() {
+            continue;
+        }
+        let additions = out.stdout.lines().filter(|l| l.starts_with('+') && !l.starts_with("+++")).count() as u64;
+        d.patch.push_str(&redact_patch(&out.stdout));
+        d.files.push(DiffFile { path: path.to_string(), status: "untracked".into(), additions, deletions: 0 });
+    }
+}
+
 /// numstat prints renames as `old => new` or `dir/{old => new}/file`; keep the new path.
 fn rename_target(p: &str) -> String {
     if let (Some(open), Some(close)) = (p.find('{'), p.find('}')) {
@@ -246,4 +265,54 @@ pub async fn branch_exists(dir: &str, branch: &str) -> bool {
 /// Is `commit` already contained in `target` (e.g. a branch merged into main)?
 pub async fn is_ancestor(dir: &str, commit: &str, target: &str) -> bool {
     raw(dir, &["merge-base", "--is-ancestor", commit, target]).await.map(|o| o.ok).unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("lk-git-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join(".localkan")).unwrap();
+        d
+    }
+
+    #[tokio::test]
+    async fn plan_file_survives_gitignore() {
+        let d = scratch("ignored");
+        let dir = d.to_str().unwrap();
+        for args in [&["init", "-q", "-b", "main"][..], &["config", "user.email", "t@example.test"], &["config", "user.name", "t"]] {
+            run(dir, args).await.unwrap();
+        }
+        std::fs::write(d.join(".gitignore"), "node_modules/\n.localkan/\n").unwrap();
+        run(dir, &["add", ".gitignore"]).await.unwrap();
+        run(dir, &["commit", "-q", "-m", "init"]).await.unwrap();
+        std::fs::write(d.join(".localkan/plan.json"), "{\"goal\": \"g\", \"tasks\": []}\n").unwrap();
+        std::fs::write(d.join("a.txt"), "x\n").unwrap();
+
+        let mut diff = diff(dir, "main").await.unwrap();
+        assert!(!diff.files.iter().any(|f| f.path == ".localkan/plan.json"), "git hides it");
+        add_new_files(&mut diff, dir, &[".localkan/plan.json", ".localkan/answer.md"]).await;
+        let paths: Vec<&str> = diff.files.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(paths, ["a.txt", ".localkan/plan.json"]);
+        assert!(diff.patch.contains("diff --git a/.localkan/plan.json b/.localkan/plan.json") || diff.patch.contains(" b/.localkan/plan.json"));
+        assert!(diff.patch.contains("+{\"goal\": \"g\", \"tasks\": []}"));
+
+        // Already in the diff (not ignored): not added twice.
+        add_new_files(&mut diff, dir, &[".localkan/plan.json"]).await;
+        assert_eq!(diff.files.len(), 2);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[tokio::test]
+    async fn plan_file_outside_any_repo() {
+        let d = scratch("plain");
+        std::fs::write(d.join(".localkan/answer.md"), "# Trả lời\n").unwrap();
+        let mut diff = DiffResult { base_ref: "x".into(), files: vec![], patch: String::new() };
+        add_new_files(&mut diff, d.to_str().unwrap(), &[".localkan/plan.json", ".localkan/answer.md"]).await;
+        assert_eq!(diff.files.len(), 1);
+        assert!(diff.patch.contains("+# Trả lời"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }

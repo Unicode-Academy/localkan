@@ -9,8 +9,10 @@ import type {
   Attachment,
   BridgeInfo,
   Card,
+  BudgetSettings,
   CardMode,
   CardUsage,
+  Effort,
   CardStatus,
   Device,
   PreviewInfo,
@@ -23,7 +25,7 @@ import type {
   PrInfo,
   ProjectRepo,
 } from '@localkan/protocol';
-import { DEFAULT_GIT_SETTINGS } from '@localkan/protocol';
+import { DEFAULT_BUDGET, DEFAULT_GIT_SETTINGS } from '@localkan/protocol';
 
 // -- documents ----------------------------------------------------------------
 
@@ -69,6 +71,8 @@ interface ProjectDoc {
   git?: Partial<GitSettings>;
   repos?: ProjectRepo[];
   repoGit?: Record<string, Partial<GitSettings>>;
+  leanAgents?: boolean;
+  budget?: Partial<BudgetSettings>;
   createdAt: Date;
 }
 
@@ -96,6 +100,10 @@ interface CardDoc {
   planImport?: { at: string; count: number } | null;
   planText?: string | null;
   usage?: CardUsage | null;
+  effort?: Effort | null;
+  overBudgetAt?: string | null;
+  /** The budget (USD) the card was last flagged against; a higher budget re-arms the check. */
+  overBudgetLimit?: number | null;
   pr?: PrInfo | null;
   repos?: CardRepo[];
   attachments: Attachment[];
@@ -106,7 +114,9 @@ interface CardDoc {
 }
 
 /** Fields of a card that callers may change. */
-export type CardPatch = Partial<Omit<Card, 'id' | 'projectId' | 'attachments' | 'statusAt' | 'createdAt' | 'updatedAt'>>;
+export type CardPatch = Partial<Omit<Card, 'id' | 'projectId' | 'attachments' | 'statusAt' | 'createdAt' | 'updatedAt'>> & {
+  overBudgetLimit?: number | null;
+};
 
 export interface CardOwner {
   card: Card;
@@ -145,6 +155,8 @@ export function toProject(p: ProjectDoc): Project {
     repoGit: Object.fromEntries(
       (p.repos ?? []).map((r) => [r.name, { ...DEFAULT_GIT_SETTINGS, ...(p.git ?? {}), ...(p.repoGit?.[r.name] ?? {}) }]),
     ),
+    leanAgents: p.leanAgents ?? true,
+    budget: { ...DEFAULT_BUDGET, ...(p.budget ?? {}) },
     createdAt: iso(p.createdAt)!,
   };
 }
@@ -157,6 +169,7 @@ export function toCard(c: CardDoc): Card {
     prompt: c.prompt,
     agent: c.agent,
     model: c.model ?? null,
+    effort: c.effort ?? null,
     mode: c.mode,
     status: c.status,
     position: c.position,
@@ -174,6 +187,7 @@ export function toCard(c: CardDoc): Card {
     planImport: c.planImport ?? null,
     planText: c.planText ?? null,
     usage: c.usage ?? null,
+    overBudgetAt: c.overBudgetAt ?? null,
     pr: c.pr ?? null,
     repos: c.repos ?? [],
     attachments: c.attachments ?? [],
@@ -364,7 +378,7 @@ export class Store {
 
   async updateProject(
     id: string,
-    patch: Partial<Pick<ProjectDoc, 'name' | 'status' | 'baseRef' | 'error' | 'preview' | 'git' | 'repos' | 'repoGit'>>,
+    patch: Partial<Pick<ProjectDoc, 'name' | 'status' | 'baseRef' | 'error' | 'preview' | 'git' | 'repos' | 'repoGit' | 'leanAgents' | 'budget'>>,
   ) {
     await this.projects.updateOne({ _id: id }, { $set: patch });
   }
@@ -400,6 +414,12 @@ export class Store {
   }
 
   /** Card plus the ownership facts needed for authorization checks. */
+  /** The budget a card was last flagged against (see Hub.checkBudget), or null. */
+  async overBudgetLimit(id: string): Promise<number | null> {
+    const c = await this.cards.findOne({ _id: id }, { projection: { overBudgetLimit: 1 } });
+    return c?.overBudgetLimit ?? null;
+  }
+
   async getCardWithOwner(id: string): Promise<CardOwner | null> {
     const c = await this.cards.findOne({ _id: id });
     if (!c) return null;
@@ -429,6 +449,7 @@ export class Store {
     prompt: string;
     agent: AgentId;
     model: string | null;
+    effort?: Effort | null;
     mode: CardMode;
     position: number;
     parentCardId: string | null;
@@ -442,6 +463,7 @@ export class Store {
       prompt: c.prompt,
       agent: c.agent,
       model: c.model,
+      effort: c.effort ?? null,
       mode: c.mode,
       status: 'todo',
       position: c.position,

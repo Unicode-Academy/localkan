@@ -212,6 +212,8 @@ impl Engine {
             title: p.title.clone(),
             agent: p.agent.clone(),
             model: p.model.clone(),
+            effort: p.effort.clone(),
+            lean: p.lean.unwrap_or(true),
             mode: p.mode.clone(),
             worktree_path: Some(root.clone()),
             branch: branch.clone(),
