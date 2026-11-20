@@ -23,6 +23,7 @@ export function Overview({
   projects,
   devices,
   cards,
+  activity,
   live,
   toasts,
   go,
@@ -33,6 +34,8 @@ export function Overview({
   projects: Project[];
   devices: Device[];
   cards: Card[];
+  /** The latest step of each working card's agent. */
+  activity: Record<string, string>;
   live: boolean;
   toasts: ToastApi;
   go: (hash: string) => void;
@@ -116,7 +119,7 @@ export function Overview({
           </div>
         )}
         {shown.map((c) => (
-          <TaskItem key={c.id} card={c} project={projects.find((p) => p.id === c.projectId)} toasts={toasts} go={go} />
+          <TaskItem key={c.id} card={c} activity={activity[c.id]} project={projects.find((p) => p.id === c.projectId)} toasts={toasts} go={go} />
         ))}
       </div>
 
@@ -129,7 +132,19 @@ export function Overview({
   );
 }
 
-function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project; toasts: ToastApi; go: (h: string) => void }) {
+function TaskItem({
+  card,
+  activity,
+  project,
+  toasts,
+  go,
+}: {
+  card: Card;
+  activity?: string;
+  project?: Project;
+  toasts: ToastApi;
+  go: (h: string) => void;
+}) {
   const models = useAgentModels(project?.deviceId);
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState('');
@@ -164,6 +179,7 @@ function TaskItem({ card, project, toasts, go }: { card: Card; project?: Project
           </span>
         </div>
         <div className="m-card-title">{card.title}</div>
+        {activity && card.status === 'in_progress' && <p className="m-card-activity">{activity}</p>}
         {kind === 'you' && card.status === 'review' && card.summary && <p className="m-card-ok">
             <Check aria-hidden /> {plainText(card.summary)}
           </p>}

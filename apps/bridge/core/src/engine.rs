@@ -81,6 +81,9 @@ pub struct CardRt {
     /// Start Claude without the global MCP servers and plugins.
     #[serde(default)]
     pub lean: bool,
+    /// How far the agent's session files have been read for the activity log (path -> bytes).
+    #[serde(default)]
+    pub activity: HashMap<String, u64>,
     pub mode: String,
     pub worktree_path: Option<String>,
     pub branch: Option<String>,
@@ -136,6 +139,8 @@ pub struct Engine {
     ticks: AtomicU64,
     /// A usage read is in progress (they run in the background, one at a time).
     usage_busy: std::sync::atomic::AtomicBool,
+    /// One activity read at a time, so two never log the same steps.
+    activity_lock: Mutex<()>,
     /// Per-card filters that strip TUI repaint noise from agent output.
     filters: std::sync::Mutex<HashMap<String, LogFilter>>,
     device_name: String,
@@ -199,6 +204,7 @@ impl Engine {
             coord_lock: Mutex::new(()),
             ticks: AtomicU64::new(0),
             usage_busy: std::sync::atomic::AtomicBool::new(false),
+            activity_lock: Mutex::new(()),
             filters: std::sync::Mutex::new(HashMap::new()),
             device_name,
             mock_cmd,
@@ -2283,7 +2289,30 @@ impl Engine {
                 if let Err(e) = self.observe(&c.card_id).await {
                     tracing::debug!(card = c.card_id, "observe: {e:#}");
                 }
+            } else {
+                self.poll_activity(&c.card_id).await;
             }
+        }
+    }
+
+    /// Log the agent's new steps (files read and edited, commands, what it says), read from its
+    /// session record: a full-screen agent CLI leaves nothing readable on its terminal.
+    async fn poll_activity(&self, card_id: &str) {
+        let _one = self.activity_lock.lock().await;
+        let Ok(card) = self.card(card_id).await else { return };
+        let Some(wt) = card.worktree_path.clone().filter(|_| self.mock_cmd.is_none()) else { return };
+        let (agent, mut offsets) = (card.agent.clone(), card.activity.clone());
+        let read = tokio::task::spawn_blocking(move || {
+            let lines = crate::activity::read_new(&agent, Path::new(&wt), &mut offsets);
+            (lines, offsets)
+        })
+        .await;
+        let Ok((lines, offsets)) = read else { return };
+        if offsets != card.activity {
+            self.update_card(card_id, |c| c.activity = offsets).await;
+        }
+        if !lines.is_empty() {
+            self.log(card_id, "activity", lines).await;
         }
     }
 
@@ -2441,6 +2470,7 @@ impl Engine {
         }
         // Flush any output that arrived after the last poll.
         let _ = self.poll_output_inner(&card.card_id).await;
+        self.poll_activity(&card.card_id).await;
         self.record_handoff(card, summary.as_deref()).await;
         self.sys(&card.card_id, if ok { "Agent báo đã xong. Chuyển sang Review." } else { "Agent báo thất bại." }).await;
         let mut patch = CardStatePatch::new(&card.card_id);
@@ -2906,7 +2936,7 @@ const COMMON_RULES: &str = "Rules from Localkan (the reviewer's Kanban board):
 - Never type passwords, one-time codes or other credentials, and never look for them in files, env vars or keychains, except test accounts for this project's own local app that the task or project memory gives you. When a page needs a sign-in, keep it open in its Orca tab and run the `orca orchestration ask` command from your instructions with `--timeout-ms 3600000` and a question that starts with `[LOGIN]`, then the page URL, then which site or account is needed (for example `[LOGIN] https://admin.example.com/login needs an admin account`). The reviewer signs in remotely in that tab. When the reply arrives, reload the page and continue. If the ask times out, resume it with its message id instead of asking again.
 - Keep your context small: everything you read stays in it and is re-read on every step, which is what the task costs. Before exploring, use the project memory and handoff notes above. For broad searches (where something lives, surveying many files), delegate to a subagent when your CLI has one (in Claude Code, the Explore agent) and keep only its findings. Read the parts of large files you need, not whole files. Run installs, builds and tests with quiet options and keep only the end of long output or the failures (for example `2>&1 | tail -n 40`).
 - Before you report done, write a handoff note to `.localkan/handoff.md` (Markdown, at most about 300 words): what you changed and why, decisions you made, anything the next task must know (gotchas, follow-ups), and the main files touched. Later tasks on this project read it. Git ignores it.
-- When finished, send worker_done exactly as instructed, with a short summary of what you changed and how you verified it.
+- When finished, send worker_done exactly as instructed, with a short summary of what you changed and how you verified it. Write the summary as a few short Markdown bullet lines (`- …`), one point per line, with real line breaks between them (for example `--body $'- …\n- …'`), not one long paragraph.
 - The reviewer reads Vietnamese: write everything meant for them in Vietnamese (the worker_done summary, `.localkan/handoff.md`, questions you ask, answer and plan files). Keep code, identifiers, file paths and commands as they are.";
 
 const ASK_RULES: &str = "- This card is a QUESTION, not a change request. Do not modify any project files.

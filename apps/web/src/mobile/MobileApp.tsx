@@ -12,6 +12,7 @@ import { CardScreen } from './CardScreen.tsx';
 import { NewTask } from './NewTask.tsx';
 import { Overview } from './Overview.tsx';
 import { BoardDialog } from '../components/BoardDialog.tsx';
+import { latestActivity } from '../text.ts';
 import { CostDialog } from '../components/CostDialog.tsx';
 
 /** Phone layout: an overview of every board's work, a quick "new task" screen, and one screen
@@ -131,6 +132,7 @@ export function MobileApp({
           projects={projects}
           devices={devices}
           cards={all}
+          activity={latestActivity(logs)}
           live={live}
           toasts={toasts}
           go={go}

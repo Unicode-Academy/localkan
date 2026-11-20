@@ -75,3 +75,31 @@ export function plainText(md: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+/**
+ * An agent's report as lines: kept as written when it has line breaks; a one-paragraph report
+ * becomes one bullet per sentence (and per "; " part), so it reads at a glance.
+ */
+export function formatReport(text: string): string {
+  const t = text.trim();
+  if (!t || t.includes('\n')) return t;
+  const parts = t
+    .split(/(?<=[.!?…])\s+(?=[\p{Lu}\d"“`(\[*-])|;\s+/u)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return parts.length < 2 ? t : parts.map((p) => `- ${p}`).join('\n');
+}
+
+/** The agent's latest step per card, from the logs received so far. */
+export function latestActivity(logs: Record<string, { source: string; text: string }[]>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [id, lines] of Object.entries(logs)) {
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].source === 'activity') {
+        out[id] = lines[i].text;
+        break;
+      }
+    }
+  }
+  return out;
+}

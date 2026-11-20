@@ -444,7 +444,9 @@ export interface Device {
 export interface LogLine {
   seq: number;
   ts: string;
-  source: 'agent' | 'system';
+  /** `activity`: a step of the agent (file read or edited, command run, what it said), read
+   *  from its session record. */
+  source: 'agent' | 'system' | 'activity';
   text: string;
 }
 

@@ -6,6 +6,7 @@ import { AuthScreen } from './components/AuthScreen.tsx';
 import { Board } from './components/Board.tsx';
 import { AccountMenu } from './components/AccountMenu.tsx';
 import { BoardDialog } from './components/BoardDialog.tsx';
+import { latestActivity } from './text.ts';
 import { CostDialog } from './components/CostDialog.tsx';
 import { CardPanel } from './components/CardPanel.tsx';
 import { DevicesDialog } from './components/DevicesDialog.tsx';
@@ -237,6 +238,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
   const openCard = openCardId ? cards[openCardId] ?? null : null;
   const device = project ? devices.find((d) => d.id === project.deviceId) ?? null : null;
   const boardCost = useMemo(() => summarizeUsage(projectCards.map((c) => c.usage)), [projectCards]);
+  const activity = useMemo(() => latestActivity(logs), [logs]);
 
   const setCardLog = useCallback((cardId: string, lines: LogLine[]) => {
     setLogs((prev) => ({ ...prev, [cardId]: lines.slice(-MAX_LOG_LINES) }));
@@ -384,6 +386,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
             project={project}
             device={device}
             cards={projectCards}
+            activity={activity}
             onOpen={setOpenCardId}
             onRetryProject={() => api.retryProject(project.id).catch((e) => toasts.error(e.message))}
             toasts={toasts}

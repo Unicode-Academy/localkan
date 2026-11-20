@@ -32,10 +32,13 @@ export function Board({
   project,
   device,
   cards,
+  activity,
   onOpen,
   onRetryProject,
   toasts,
 }: {
+  /** The latest step of each working card's agent. */
+  activity?: Record<string, string>;
   project: Project;
   device: Device | null;
   cards: Card[];
@@ -119,6 +122,7 @@ export function Board({
                   <CardTile
                     key={c.id}
                     card={c}
+                    activity={activity?.[c.id]}
                     models={models}
                     parentTitle={c.parentCardId ? cards.find((x) => x.id === c.parentCardId)?.title ?? null : null}
                     onOpen={() => onOpen(c.id)}
@@ -164,12 +168,15 @@ export function Board({
 
 function CardTile({
   card,
+  activity,
   models,
   parentTitle,
   onOpen,
   onDragStart,
 }: {
   card: Card;
+  /** The agent's latest step, while it works. */
+  activity?: string;
   models: AgentModels;
   parentTitle: string | null;
   onOpen: () => void;
@@ -207,6 +214,11 @@ function CardTile({
               {card.waiting.text.split('\n')[0].slice(0, 90)}
             </>
           )}
+        </div>
+      )}
+      {activity && card.status === 'in_progress' && (
+        <div className="tile-activity" title={activity}>
+          {activity}
         </div>
       )}
       {card.error && <div className="tile-error">{card.error.slice(0, 120)}</div>}

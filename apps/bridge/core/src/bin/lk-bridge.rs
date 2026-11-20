@@ -36,6 +36,12 @@ enum Cmd {
     Status,
     /// Forget the server and delete the device token.
     Unpair,
+    /// Print what an agent did in a folder (a card's worktree), as the card's log shows it.
+    Activity {
+        /// claude or codex.
+        agent: String,
+        path: std::path::PathBuf,
+    },
     /// Print the tokens an agent spent in a folder (a card's worktree), as JSON.
     Usage {
         /// claude, codex, grok or antigravity.
@@ -101,6 +107,12 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Unpair => {
             config::unpair().await?;
             println!("Đã gỡ ghép nối.");
+        }
+        Cmd::Activity { agent, path } => {
+            let mut offsets = std::collections::HashMap::new();
+            for line in localkan_bridge_core::activity::read_new(&agent, &path, &mut offsets) {
+                println!("{line}");
+            }
         }
         Cmd::Usage { agent, path } => {
             let u = localkan_bridge_core::usage::read(&agent, &path).await;

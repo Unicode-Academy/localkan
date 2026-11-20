@@ -5,6 +5,7 @@
 //! Source code stays on this machine; only what the UI needs to display (logs, diffs,
 //! terminal screens) is sent, after secret redaction.
 
+pub mod activity;
 pub mod browser;
 pub mod config;
 pub mod context;

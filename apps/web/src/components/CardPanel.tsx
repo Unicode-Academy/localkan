@@ -21,7 +21,7 @@ import { api } from '../api.ts';
 import { useAgentModels, useNarrow, useScrollLock, type AgentModels } from '../hooks.ts';
 import { closeConfirm, MODE_LABELS, MODE_TAGS } from '../modes.ts';
 import { agentText, readLastModel } from '../models.ts';
-import { addedText, clockLabel, listChoices, splitOptions } from '../text.ts';
+import { addedText, clockLabel, formatReport, listChoices, splitOptions } from '../text.ts';
 import { Markdown } from './Markdown.tsx';
 import { PlanView } from './PlanView.tsx';
 import { EffortSelect, ModelSelect } from './ModelSelect.tsx';
@@ -134,7 +134,7 @@ export function CardPanel({
         {card.summary && card.status !== 'todo' && (
           <div className="summary">
             <div className="summary-head">Agent báo cáo</div>
-          <Markdown text={card.summary} />
+          <Markdown text={formatReport(card.summary)} />
           </div>
         )}
 
@@ -538,29 +538,52 @@ function TaskTab({ card, cards, models, toasts }: { card: Card; cards: Card[]; m
   );
 }
 
+const LOG_FILTERS = [
+  { id: 'all', label: 'Tất cả' },
+  { id: 'activity', label: 'Agent làm gì' },
+  { id: 'system', label: 'Hệ thống' },
+] as const;
+type LogFilter = (typeof LOG_FILTERS)[number]['id'];
+
+/** The card's log: the agent's steps (files, commands, what it says) and Localkan's own lines,
+ *  each with its time. */
 export function LogTab({ log }: { log: LogLine[] }) {
   const ref = useRef<HTMLPreElement>(null);
   const stick = useRef(true);
+  const [filter, setFilter] = useState<LogFilter>('all');
+  const shown = filter === 'all' ? log : log.filter((l) => (filter === 'activity' ? l.source !== 'system' : l.source === 'system'));
   useEffect(() => {
     const el = ref.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [log]);
+  }, [shown]);
   return (
-    <pre
-      className="log"
-      ref={ref}
-      onScroll={(e) => {
-        const el = e.currentTarget;
-        stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-      }}
-    >
-      {log.length === 0 && <span className="muted">Chưa có log.</span>}
-      {log.map((l) => (
-        <div key={l.seq} className={`logline from-${l.source}`}>
-          {l.text}
-        </div>
-      ))}
-    </pre>
+    <div className="log-wrap">
+      <div className="log-filters" role="tablist" aria-label="Lọc log">
+        {LOG_FILTERS.map((f) => (
+          <button key={f.id} role="tab" aria-selected={filter === f.id} className={`chip${filter === f.id ? ' on' : ''}`} onClick={() => setFilter(f.id)}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <pre
+        className="log"
+        ref={ref}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+        }}
+      >
+        {shown.length === 0 && (
+          <span className="muted">{log.length === 0 ? 'Chưa có log.' : 'Không có dòng nào ở mục này.'}</span>
+        )}
+        {shown.map((l) => (
+          <div key={l.seq} className={`logline from-${l.source}`}>
+            <span className="log-time">{new Date(l.ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+            {l.text}
+          </div>
+        ))}
+      </pre>
+    </div>
   );
 }
 

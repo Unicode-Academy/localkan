@@ -2751,3 +2751,54 @@ label {
   width: auto;
   flex: 0 0 auto;
 }
+
+/* Agent activity (its steps, read from its session record) */
+.log-wrap {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  height: 100%;
+}
+.log-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.log-filters .chip {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.log-filters .chip.on {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.log-time {
+  color: var(--muted);
+  margin-right: 8px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.logline.from-activity {
+  color: var(--text);
+}
+.logline.from-system {
+  color: var(--muted);
+}
+.tile-activity,
+.m-card-activity {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+}

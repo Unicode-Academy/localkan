@@ -226,7 +226,7 @@ pub fn claude_folder(cwd: &Path) -> String {
     cwd.to_string_lossy().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect()
 }
 
-fn claude_home() -> PathBuf {
+pub(crate) fn claude_home() -> PathBuf {
     std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from).unwrap_or_else(|| paths::home().join(".claude"))
 }
 
@@ -301,7 +301,7 @@ fn parse_claude(text: &str) -> Vec<Call> {
 
 // -- Codex ---------------------------------------------------------------------------
 
-fn codex_home() -> PathBuf {
+pub(crate) fn codex_home() -> PathBuf {
     std::env::var_os("CODEX_HOME").map(PathBuf::from).unwrap_or_else(|| paths::home().join(".codex"))
 }
 
