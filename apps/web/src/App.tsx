@@ -35,16 +35,10 @@ function readViewPref(): 'auto' | 'board' {
 }
 const MAX_LOG_LINES = 5000;
 
-// Desktop page: one board's Kanban, or every board at once.
+// Desktop page: every board at once (where the app opens), or one board's Kanban.
 type Page = 'board' | 'overview';
-const PAGE_KEY = 'localkan.page';
-function readPage(): Page {
-  try {
-    return localStorage.getItem(PAGE_KEY) === 'overview' ? 'overview' : 'board';
-  } catch {
-    return 'board';
-  }
-}
+/** The board select's entry for the overview. */
+const ALL_BOARDS = '__all';
 
 function readLastProject(): string | null {
   try {
@@ -91,16 +85,13 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
   const mobile = narrow && viewPref !== 'board';
   const mobileRef = useRef(mobile);
   mobileRef.current = mobile;
-  const [page, setPageState] = useState<Page>(readPage);
-  const setPage = (p: Page) => {
-    setPageState(p);
-    try {
-      localStorage.setItem(PAGE_KEY, p);
-    } catch {
-      /* storage unavailable */
-    }
-  };
-  const overview = !mobile && page === 'overview';
+  const [page, setPage] = useState<Page>('overview');
+  // Boards and devices arrived (until then the main area waits instead of flashing "get started").
+  const [loaded, setLoaded] = useState(false);
+  // A desktop page only (a phone in Kanban view opens the board), and without any board there
+  // is nothing to overview: the board page shows how to start.
+  const canOverview = !narrow && projects.length > 0;
+  const overview = canOverview && page === 'overview';
   // The phone and the overview page show every board's cards.
   const allCardsRef = useRef(mobile || overview);
   allCardsRef.current = mobile || overview;
@@ -108,7 +99,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
   const project = projects.find((p) => p.id === projectId) ?? null;
 
   const loadAll = useCallback(async () => {
-    const [ps, ds] = await Promise.all([api.projects(), api.devices()]);
+    const [ps, ds] = await Promise.all([api.projects(), api.devices()]).finally(() => setLoaded(true));
     setProjects(ps);
     setDevices(ds);
     if (!ps.length) setDialog((d) => d ?? (ds.length ? 'project' : 'devices'));
@@ -301,27 +292,34 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
             <span className="brand-mark" aria-hidden>
               <Kanban />
             </span>
-            Localkan
+            <span className="brand-name">Localkan</span>
           </div>
-          <button
-            className={`btn ghost${overview ? ' on' : ''}`}
-            onClick={() => setPage(overview ? 'board' : 'overview')}
-            aria-pressed={overview}
-            title={overview ? 'Về bảng Kanban đang chọn' : 'Xem tổng quan mọi bảng trên một màn hình'}
-          >
-            <LayoutDashboard />
-            <span className="topbar-label"> Tổng quan</span>
-          </button>
+          {canOverview && (
+            <button
+              className={`btn ghost${overview ? ' on' : ''}`}
+              onClick={() => setPage(overview ? 'board' : 'overview')}
+              aria-pressed={overview}
+              title={overview ? 'Về bảng Kanban đang chọn' : 'Xem tổng quan mọi bảng trên một màn hình'}
+            >
+              <LayoutDashboard />
+              <span className="topbar-label"> Tổng quan</span>
+            </button>
+          )}
           <select
             className="project-select"
-            value={projectId ?? ''}
+            value={overview ? ALL_BOARDS : (projectId ?? '')}
             onChange={(e) => {
+              if (e.target.value === ALL_BOARDS) {
+                setPage('overview');
+                return;
+              }
               setProjectId(e.target.value || null);
               setPage('board');
             }}
             aria-label="Chọn bảng"
           >
             {projects.length === 0 && <option value="">Chưa có bảng</option>}
+            {canOverview && <option value={ALL_BOARDS}>Tất cả các bảng</option>}
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -334,7 +332,8 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
             </button>
           )}
           <button className="btn ghost" onClick={() => setDialog('project')}>
-            <Plus /> Bảng mới
+            <Plus />
+            <span className="topbar-label hide-2"> Bảng mới</span>
           </button>
           {project && !overview && (
             <button
@@ -344,7 +343,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
               aria-label="Chi phí AI"
             >
               <CircleDollarSign />
-              <span className="topbar-label"> {boardCost.tokens > 0 ? formatUsd(boardCost.usd) : 'Chi phí'}</span>
+              <span className="topbar-label keep"> {boardCost.tokens > 0 ? formatUsd(boardCost.usd) : 'Chi phí'}</span>
             </button>
           )}
           {project && !overview && (
@@ -354,7 +353,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
               title="Bộ nhớ dự án và ghi chú bàn giao giữa các thẻ"
               aria-label="Bộ nhớ"
             >
-              <Brain /><span className="topbar-label"> Bộ nhớ</span>
+              <Brain /><span className="topbar-label hide-2"> Bộ nhớ</span>
             </button>
           )}
           {project && !overview && (
@@ -364,7 +363,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
               title="Chạy và xem trước thư mục dự án (nhánh đang checkout, thường là main)"
               aria-label={`Xem trước ${project.baseRef ?? 'main'}`}
             >
-              <Eye /><span className="topbar-label"> Xem trước {project.baseRef ?? 'main'}</span>
+              <Eye /><span className="topbar-label hide-1"> Xem trước {project.baseRef ?? 'main'}</span>
               {project.preview?.status === 'running' && <span className="dot ok" style={{ marginLeft: 6 }} />}
             </button>
           )}
@@ -375,7 +374,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
               title="Trình duyệt dùng chung với agent (trình duyệt của Orca trên máy chạy bridge): xem, bấm, gõ, đăng nhập từ xa"
               aria-label="Trình duyệt"
             >
-              <Globe /><span className="topbar-label"> Trình duyệt</span>
+              <Globe /><span className="topbar-label hide-1"> Trình duyệt</span>
             </button>
           )}
           {project && !overview && (
@@ -391,7 +390,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
               }
               aria-label="Cài đặt git"
             >
-              <GitBranch /><span className="topbar-label"> {project.repos.length ? `Git (${project.repos.length} repo)` : project.git.flow === 'pr' ? 'PR' : project.git.flow === 'push' ? 'Push' : 'Git'}</span>
+              <GitBranch /><span className="topbar-label hide-2"> {project.repos.length ? `Git (${project.repos.length} repo)` : project.git.flow === 'pr' ? 'PR' : project.git.flow === 'push' ? 'Push' : 'Git'}</span>
             </button>
           )}
           <div className="spacer" />
@@ -405,7 +404,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
           </button>
           <button className="btn ghost device-pill" onClick={() => setDialog('devices')} title="Máy chạy bridge">
             <span className={`dot ${device?.online ? 'ok' : 'off'}`} />
-            {device ? device.name : `${devices.length} máy`}
+            <span className="device-name">{device ? device.name : `${devices.length} máy`}</span>
           </button>
           <span className={`live ${live ? 'ok' : 'off'}`} title={live ? 'Đang nhận cập nhật trực tiếp' : 'Mất kết nối'}>
             {live ? 'Live' : 'Offline'}
@@ -418,7 +417,9 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
           <AccountMenu email={email} onLogout={onLogout} />
         </header>
 
-        {overview ? (
+        {!loaded ? (
+          <div className="splash">Đang tải…</div>
+        ) : overview ? (
           <Dashboard
             projects={projects}
             devices={devices}

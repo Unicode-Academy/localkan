@@ -1165,11 +1165,6 @@ label {
   justify-content: flex-start;
   width: 100%;
 }
-@media (max-width: 1140px) {
-  .topbar-label {
-    display: none;
-  }
-}
 @media (max-width: 720px) {
   .topbar {
     flex-wrap: wrap;
@@ -3011,5 +3006,62 @@ label {
   }
   .dash-list {
     max-height: 60vh;
+  }
+}
+
+/* Top bar: one line on a desktop. As the window narrows, labels give way in order of use
+   (the longest first), then the board select and the device name shrink; below 900px it may
+   wrap (a phone gets its own layout under 760px). */
+.topbar > * {
+  flex-shrink: 0;
+}
+.topbar .project-select {
+  flex: 0 1 auto;
+  min-width: 120px;
+  max-width: 260px;
+  text-overflow: ellipsis;
+}
+.topbar .device-pill {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 200px;
+}
+.device-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (min-width: 901px) {
+  .topbar {
+    flex-wrap: nowrap;
+  }
+}
+@media (max-width: 1580px) {
+  .topbar-label.hide-1 {
+    display: none;
+  }
+}
+@media (max-width: 1380px) {
+  .topbar-label.hide-2 {
+    display: none;
+  }
+}
+@media (max-width: 1220px) {
+  .topbar-label:not(.keep) {
+    display: none;
+  }
+}
+@media (max-width: 1100px) {
+  .brand-name {
+    display: none;
+  }
+}
+@media (max-width: 1000px) {
+  .topbar-label.keep {
+    display: none;
+  }
+  .topbar .device-pill {
+    max-width: 120px;
   }
 }
