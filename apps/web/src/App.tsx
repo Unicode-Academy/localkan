@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, BellOff, Brain, CircleDollarSign, Eye, GitBranch, Globe, Kanban, Plus, Settings2, Smartphone } from 'lucide-react';
+import { Bell, BellOff, Brain, CircleDollarSign, Eye, GitBranch, Globe, Kanban, LayoutDashboard, Plus, Settings2, Smartphone } from 'lucide-react';
 import { formatUsd, summarizeUsage, type Card, type Device, type LogLine, type Project, type ServerToWeb } from '@localkan/protocol';
 import { api, type AuthState, connectLive } from './api.ts';
 import { AuthScreen } from './components/AuthScreen.tsx';
@@ -7,6 +7,7 @@ import { Board } from './components/Board.tsx';
 import { AccountMenu } from './components/AccountMenu.tsx';
 import { BoardDialog } from './components/BoardDialog.tsx';
 import { latestActivity } from './text.ts';
+import { Dashboard } from './components/Dashboard.tsx';
 import { CostDialog } from './components/CostDialog.tsx';
 import { CardPanel } from './components/CardPanel.tsx';
 import { DevicesDialog } from './components/DevicesDialog.tsx';
@@ -33,6 +34,17 @@ function readViewPref(): 'auto' | 'board' {
   }
 }
 const MAX_LOG_LINES = 5000;
+
+// Desktop page: one board's Kanban, or every board at once.
+type Page = 'board' | 'overview';
+const PAGE_KEY = 'localkan.page';
+function readPage(): Page {
+  try {
+    return localStorage.getItem(PAGE_KEY) === 'overview' ? 'overview' : 'board';
+  } catch {
+    return 'board';
+  }
+}
 
 function readLastProject(): string | null {
   try {
@@ -79,6 +91,19 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
   const mobile = narrow && viewPref !== 'board';
   const mobileRef = useRef(mobile);
   mobileRef.current = mobile;
+  const [page, setPageState] = useState<Page>(readPage);
+  const setPage = (p: Page) => {
+    setPageState(p);
+    try {
+      localStorage.setItem(PAGE_KEY, p);
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const overview = !mobile && page === 'overview';
+  // The phone and the overview page show every board's cards.
+  const allCardsRef = useRef(mobile || overview);
+  allCardsRef.current = mobile || overview;
 
   const project = projects.find((p) => p.id === projectId) ?? null;
 
@@ -164,8 +189,8 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
   const loadAllCardsRef = useRef(loadAllCards);
   loadAllCardsRef.current = loadAllCards;
   useEffect(() => {
-    if (mobile) loadAllCards();
-  }, [mobile, loadAllCards]);
+    if (mobile || overview) loadAllCards();
+  }, [mobile, overview, loadAllCards]);
 
   useEffect(() => {
     const onMessage = (msg: ServerToWeb) => {
@@ -222,7 +247,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
       onMessage,
       () => {
         loadAll().catch(() => {});
-        if (mobileRef.current) loadAllCardsRef.current();
+        if (allCardsRef.current) loadAllCardsRef.current();
         else if (projectId) loadCards(projectId).catch(() => {});
       },
       setLive,
@@ -278,10 +303,22 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
             </span>
             Localkan
           </div>
+          <button
+            className={`btn ghost${overview ? ' on' : ''}`}
+            onClick={() => setPage(overview ? 'board' : 'overview')}
+            aria-pressed={overview}
+            title={overview ? 'Về bảng Kanban đang chọn' : 'Xem tổng quan mọi bảng trên một màn hình'}
+          >
+            <LayoutDashboard />
+            <span className="topbar-label"> Tổng quan</span>
+          </button>
           <select
             className="project-select"
             value={projectId ?? ''}
-            onChange={(e) => setProjectId(e.target.value || null)}
+            onChange={(e) => {
+              setProjectId(e.target.value || null);
+              setPage('board');
+            }}
             aria-label="Chọn bảng"
           >
             {projects.length === 0 && <option value="">Chưa có bảng</option>}
@@ -291,7 +328,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
               </option>
             ))}
           </select>
-          {project && (
+          {project && !overview && (
             <button className="btn ghost" onClick={() => setDialog('board')} title="Đổi tên hoặc xóa bảng" aria-label="Cài đặt bảng">
               <Settings2 />
             </button>
@@ -299,7 +336,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
           <button className="btn ghost" onClick={() => setDialog('project')}>
             <Plus /> Bảng mới
           </button>
-          {project && (
+          {project && !overview && (
             <button
               className="btn ghost"
               onClick={() => setDialog('cost')}
@@ -310,7 +347,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
               <span className="topbar-label"> {boardCost.tokens > 0 ? formatUsd(boardCost.usd) : 'Chi phí'}</span>
             </button>
           )}
-          {project && (
+          {project && !overview && (
             <button
               className="btn ghost"
               onClick={() => setDialog('memory')}
@@ -320,7 +357,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
               <Brain /><span className="topbar-label"> Bộ nhớ</span>
             </button>
           )}
-          {project && (
+          {project && !overview && (
             <button
               className="btn ghost"
               onClick={() => setDialog('preview')}
@@ -331,7 +368,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
               {project.preview?.status === 'running' && <span className="dot ok" style={{ marginLeft: 6 }} />}
             </button>
           )}
-          {project && (
+          {project && !overview && (
             <button
               className="btn ghost"
               onClick={() => setDialog('browser')}
@@ -341,7 +378,7 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
               <Globe /><span className="topbar-label"> Trình duyệt</span>
             </button>
           )}
-          {project && (
+          {project && !overview && (
             <button
               className="btn ghost"
               onClick={() => setDialog('git')}
@@ -381,7 +418,23 @@ function Workspace({ email, onLogout }: { email: string; onLogout: () => void })
           <AccountMenu email={email} onLogout={onLogout} />
         </header>
 
-        {project ? (
+        {overview ? (
+          <Dashboard
+            projects={projects}
+            devices={devices}
+            cards={Object.values(cards)}
+            activity={activity}
+            onOpenCard={(c) => {
+              setProjectId(c.projectId);
+              setOpenCardId(c.id);
+            }}
+            onOpenBoard={(id) => {
+              setProjectId(id);
+              setOpenCardId(null);
+              setPage('board');
+            }}
+          />
+        ) : project ? (
           <Board
             project={project}
             device={device}

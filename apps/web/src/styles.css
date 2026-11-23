@@ -2802,3 +2802,214 @@ label {
   text-overflow: ellipsis;
   margin: 0;
 }
+
+/* Overview page (desktop): every board on one screen */
+.btn.ghost.on {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.dash {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 16px 16px;
+}
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+.dash-stat {
+  display: grid;
+  gap: 2px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--tone);
+  border-radius: var(--radius);
+  --tone: var(--muted);
+}
+.dash-stat strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 24px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.dash-stat strong svg {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+.dash-stat span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.tone-warn {
+  --tone: var(--warn);
+}
+.tone-info {
+  --tone: var(--accent);
+}
+.tone-danger {
+  --tone: var(--danger);
+}
+.tone-ok {
+  --tone: var(--ok);
+}
+.tone-muted {
+  --tone: var(--col-todo);
+}
+.dash-main {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 12px;
+}
+.dash-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--tone, var(--col-review));
+  border-radius: var(--radius);
+}
+.dash-col-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 8px;
+}
+.dash-col-head .count {
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 0 7px;
+}
+.dash-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+.dash-empty {
+  margin: 6px 2px;
+}
+.dash-item,
+.dash-board-tile {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  padding: 9px 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.dash-item:hover,
+.dash-board-tile:hover {
+  border-color: var(--border-strong);
+}
+.dash-item-top,
+.dash-board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.dash-board {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.dash-detail,
+.dash-foot {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.dash-detail {
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.dash-activity {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash-device {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.dash-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: var(--border);
+  gap: 2px;
+}
+.dash-bar .seg {
+  flex-basis: 0;
+  min-width: 4px;
+}
+.dash-bar-empty {
+  flex: 1;
+}
+.seg.s-todo { background: var(--col-todo); }
+.seg.s-in_progress { background: var(--col-in_progress); }
+.seg.s-needs_input { background: var(--col-needs_input); }
+.seg.s-review { background: var(--col-review); }
+.seg.s-done { background: var(--col-done); }
+.dash-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.dash-counts .c-in_progress { color: var(--col-in_progress); }
+.dash-counts .c-needs_input { color: var(--col-needs_input); }
+.dash-counts .c-review { color: var(--col-review); }
+.dash-counts .c-done { color: var(--col-done); }
+.dash-counts .c-todo { color: var(--muted); }
+@media (max-width: 1100px) {
+  .dash {
+    overflow-y: auto;
+    grid-template-rows: auto auto;
+  }
+  .dash-main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .dash-boards {
+    grid-column: 1 / -1;
+  }
+  .dash-list {
+    max-height: 60vh;
+  }
+}
