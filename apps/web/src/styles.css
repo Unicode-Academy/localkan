@@ -3065,3 +3065,22 @@ label {
     max-width: 120px;
   }
 }
+
+/* A finished card's follow-up request */
+.reopen {
+  display: grid;
+  gap: 8px;
+  margin: 0 18px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.reopen p {
+  margin: 0;
+}
+.m-screen .reopen {
+  margin: 0;
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: var(--surface);
+}

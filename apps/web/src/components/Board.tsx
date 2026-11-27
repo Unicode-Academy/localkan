@@ -227,6 +227,7 @@ function CardTile({
           {agentText(card, models)}
         </span>
         {MODE_TAGS[card.mode] && <span className="tag">{MODE_TAGS[card.mode]}</span>}
+        {card.reopens > 0 && <span className="tag" title="Thẻ đã được mở lại để làm bổ sung">vòng {card.reopens + 1}</span>}
         {card.repos.length > 0 && (
           <span className="tag" title={card.repos.map((r) => r.name).join(', ')}>
             {card.repos.length} repo

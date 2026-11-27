@@ -34,6 +34,7 @@ import { PrPanel, ReposPanel } from './PrPanel.tsx';
 import { RemoteBrowser } from './RemoteBrowser.tsx';
 import { RunBadge } from './RunBadge.tsx';
 import { UsageSection } from './UsageView.tsx';
+import { ReopenBox } from './ReopenBox.tsx';
 import type { ToastApi } from './Toasts.tsx';
 import { appendPhrase, VoiceButton } from './VoiceButton.tsx';
 
@@ -117,6 +118,7 @@ export function CardPanel({
                 {agentText(card, models)}
               </span>
               {MODE_TAGS[card.mode] && <span className="tag">{MODE_TAGS[card.mode]}</span>}
+              {card.reopens > 0 && <span className="tag" title="Thẻ đã được mở lại để làm bổ sung">vòng {card.reopens + 1}</span>}
               {card.branch && <code>{card.branch}</code>}
               {card.prUrl && (
                 <a href={card.prUrl} target="_blank" rel="noreferrer">
@@ -139,6 +141,7 @@ export function CardPanel({
         )}
 
         <UsageSection card={card} project={project} />
+        {card.status === 'done' && <ReopenBox card={card} toasts={toasts} />}
 
         {card.waiting && <WaitingBox card={card} cards={cards} project={project} toasts={toasts} busy={busy} run={run} />}
 

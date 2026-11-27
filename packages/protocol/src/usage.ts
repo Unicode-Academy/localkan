@@ -184,3 +184,32 @@ export function formatTokens(n: number): string {
   if (n >= 1e3) return `${f(n / 1e3, 1)}K`;
   return String(n);
 }
+
+/** Two measurements of one card added up: a reopened card works in a new worktree, so its
+ *  earlier rounds are kept and the new round's usage is added to them. */
+export function mergeUsage(base: CardUsage | null | undefined, next: CardUsage): CardUsage {
+  if (!base) return next;
+  const byKey = new Map<string, UsageBucket>();
+  for (const b of [...base.buckets, ...next.buckets]) {
+    const key = `${b.model}\u0000${b.tier}`;
+    const e = byKey.get(key);
+    if (!e) {
+      byKey.set(key, { ...b });
+      continue;
+    }
+    e.requests += b.requests;
+    e.input += b.input;
+    e.cacheRead += b.cacheRead;
+    e.cacheWrite += b.cacheWrite;
+    e.cacheWriteLong += b.cacheWriteLong;
+    e.output += b.output;
+    if (typeof b.costUsd === 'number' || typeof e.costUsd === 'number') e.costUsd = (e.costUsd ?? 0) + (b.costUsd ?? 0);
+  }
+  return {
+    agent: next.agent,
+    buckets: [...byKey.values()],
+    sessions: base.sessions + next.sessions,
+    unsupported: next.unsupported && base.unsupported,
+    ...(next.contextTokens !== undefined ? { contextTokens: next.contextTokens } : {}),
+  };
+}

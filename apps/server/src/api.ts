@@ -23,6 +23,7 @@ import {
   PLAN_FILE,
   PLAN_TEXT_MAX,
   addedText,
+  mergeUsage,
   parsePlan,
 } from '@localkan/protocol';
 import { hashPassword, newPairingCode, newToken, normalizePairingCode, sha256, verifyPassword } from './auth.ts';
@@ -436,7 +437,8 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     const res = await hub.request(p.deviceId, 'usage.read', { items }, 120_000);
     let measured = 0;
     for (const card of cards) {
-      const usage = res.usage?.[card.id];
+      const read = res.usage?.[card.id];
+      const usage = read && mergeUsage(await store.usageBase(card.id), read);
       if (!usage || JSON.stringify(usage) === JSON.stringify(card.usage)) continue;
       pushCard(c.get('userId'), await store.updateCard(card.id, { usage }));
       measured++;
@@ -704,6 +706,58 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     return c.json(await store.getCard(card.id));
   });
 
+  // A finished card opened again for a follow-up request: the agent works in a new worktree
+  // that starts from the card's own work (its branch if not merged yet, else the base branch,
+  // which has it), with the card's handoff note and the request. The card keeps its history,
+  // log and cost.
+  api.post('/cards/:id/reopen', async (c) => {
+    const { card, deviceId, repoPath, userId } = await ownCard(c, c.req.param('id'));
+    if (card.status !== 'done') throw new HttpError(409, 'Chỉ mở lại được thẻ đã hoàn tất.');
+    const b = await body<{ text?: unknown }>(c);
+    const request = String(b.text ?? '').trim().slice(0, 20000);
+    if (!request) throw new HttpError(400, 'Hãy viết yêu cầu bổ sung cho agent.');
+    const project = await ownProject(c, card.projectId);
+    if (project.status !== 'ready') throw new HttpError(409, 'Bảng chưa sẵn sàng (repo chưa được đăng ký với Orca).');
+    const reopens = card.reopens + 1;
+    pushCard(
+      userId,
+      await store.updateCard(card.id, {
+        status: 'in_progress',
+        runState: 'starting',
+        error: null,
+        summary: null,
+        waiting: null,
+        pr: null,
+        reopens,
+        usageBase: card.usage,
+      }),
+    );
+    try {
+      await hub.request(deviceId, 'card.start', {
+        cardId: card.id,
+        projectId: card.projectId,
+        repoPath,
+        title: card.title,
+        prompt: card.prompt,
+        agent: card.agent,
+        model: card.model,
+        effort: card.effort,
+        lean: project.leanAgents,
+        mode: card.mode,
+        attachments: card.attachments.map(({ id, name, mime }) => ({ id, name, mime })),
+        // The card goes on from its own work and handoff note.
+        parent: { cardId: card.id, title: card.title, branch: card.branch },
+        git: project.git,
+        repoGit: project.repoGit,
+        reopen: { round: reopens + 1, request },
+      });
+    } catch (err) {
+      pushCard(userId, await store.updateCard(card.id, { status: 'done', runState: 'idle', error: (err as Error).message, usageBase: null }));
+      throw err;
+    }
+    return c.json(await store.getCard(card.id));
+  });
+
   // Run the task again from the start in the same worktree: after a failed start, or once a
   // one-time setup step on the bridge machine has been done.
   api.post('/cards/:id/retry', async (c) => {
@@ -836,7 +890,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       waiting: null,
       prUrl: res.prUrl ?? card.prUrl,
       ...(res.repos ? { repos: res.repos } : {}),
-      ...(res.usage ? { usage: res.usage } : {}),
+      ...(res.usage ? { usage: mergeUsage(await store.usageBase(card.id), res.usage) } : {}),
       // Closing a question or a plan discards nothing of value: keep the agent's report.
       summary: card.mode !== 'act' && card.summary ? card.summary : res.message,
       error: null,

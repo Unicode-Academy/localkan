@@ -206,6 +206,10 @@ pub struct CardStart {
     /// add tool definitions to every request). None counts as on.
     #[serde(default)]
     pub lean: Option<bool>,
+    /// A finished card opened again (round 2, 3…) for this follow-up request: a new worktree
+    /// from the card's own work, with `-r<round>` on its branch and folder names.
+    #[serde(default)]
+    pub reopen: Option<Reopen>,
     pub mode: String,
     #[serde(default)]
     pub attachments: Vec<AttachmentRef>,
@@ -216,6 +220,33 @@ pub struct CardStart {
     /// Multi-repo board: git settings per repo name.
     #[serde(default)]
     pub repo_git: std::collections::HashMap<String, GitSettings>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Reopen {
+    pub round: u32,
+    pub request: String,
+}
+
+impl CardStart {
+    /// What tells this run's branches and folders apart from the card's earlier rounds.
+    pub fn name_suffix(&self) -> String {
+        self.reopen.as_ref().map(|r| format!("-r{}", r.round.max(2))).unwrap_or_default()
+    }
+
+    /// The task as the agent reads it: on a reopened card, the earlier task plus the new request.
+    pub fn task_prompt(&self) -> String {
+        match &self.reopen {
+            None => self.prompt.clone(),
+            Some(r) => format!(
+                "{}\n\n---\nThis task was finished before (round {} now). Its handoff note is in the project context below, and its changes are already in the code you start from. The reviewer now asks for this follow-up; do it, and keep what was done unless the request changes it:\n\n{}",
+                self.prompt.trim(),
+                r.round.max(2),
+                r.request.trim()
+            ),
+        }
+    }
 }
 
 /// The board's git workflow (see GitSettings in @localkan/protocol).
@@ -504,4 +535,28 @@ pub struct BrowserShot {
     pub height: f64,
     pub url: String,
     pub title: String,
+}
+
+#[cfg(test)]
+mod reopen_tests {
+    use super::*;
+
+    #[test]
+    fn reopened_card_names_and_task() {
+        let mut p: CardStart = serde_json::from_value(serde_json::json!({
+            "cardId": "c1", "projectId": "p1", "repoPath": "/r", "title": "Sửa form", "prompt": "Làm form đăng ký.",
+            "agent": "claude", "mode": "act"
+        }))
+        .unwrap();
+        assert_eq!(p.name_suffix(), "");
+        assert_eq!(p.task_prompt(), "Làm form đăng ký.");
+        p = serde_json::from_value(serde_json::json!({
+            "cardId": "c1", "projectId": "p1", "repoPath": "/r", "title": "Sửa form", "prompt": "Làm form đăng ký.",
+            "agent": "claude", "mode": "act", "reopen": { "round": 2, "request": "Đổi màu nút sang cam." }
+        }))
+        .unwrap();
+        assert_eq!(p.name_suffix(), "-r2");
+        let t = p.task_prompt();
+        assert!(t.starts_with("Làm form đăng ký.") && t.contains("round 2") && t.ends_with("Đổi màu nút sang cam."));
+    }
 }

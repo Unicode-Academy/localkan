@@ -16,6 +16,7 @@ import { agentText } from '../models.ts';
 import { addedText, formatReport } from '../text.ts';
 import { PlanView } from '../components/PlanView.tsx';
 import { UsageSection } from '../components/UsageView.tsx';
+import { ReopenBox } from '../components/ReopenBox.tsx';
 import { Markdown } from '../components/Markdown.tsx';
 import { FinishBox, LogTab, WaitingBox, type Run } from '../components/CardPanel.tsx';
 import { DiffView } from '../components/DiffView.tsx';
@@ -183,6 +184,7 @@ export function CardScreen({
         )}
 
         <UsageSection card={card} project={project} />
+        {card.status === 'done' && <ReopenBox card={card} toasts={toasts} />}
 
         <button className="m-link" onClick={onFull}>
           Mở chi tiết đầy đủ (nhiệm vụ, terminal, xem trước…)

@@ -14,7 +14,7 @@ import type {
   ServerToWeb,
   Card,
 } from '@localkan/protocol';
-import { summarizeUsage } from '@localkan/protocol';
+import { mergeUsage, summarizeUsage } from '@localkan/protocol';
 import { cardEvent, type CardEventName } from './push.ts';
 import { type Store, toDevice } from './store.ts';
 
@@ -188,6 +188,8 @@ export class Hub {
     // Finished cards are final: a bridge re-syncing old state must not reopen them.
     if (owned.card.status === 'done') return;
     const { cardId, ...rest } = patch;
+    // A reopened card's new round adds to what its earlier rounds spent.
+    if (rest.usage) rest.usage = mergeUsage(await this.store.usageBase(cardId), rest.usage);
     const card = await this.store.updateCard(cardId, rest);
     if (card) this.sendToUser(owned.userId, { type: 'card.updated', card });
     if (card && rest.usage) await this.checkBudget(conn.deviceId, owned.userId, card).catch((err) => console.error('budget:', err));

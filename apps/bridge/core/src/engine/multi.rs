@@ -180,7 +180,12 @@ impl Engine {
     pub(super) async fn start_multi(self: &Arc<Self>, p: CardStart, project: ProjectRt) -> Result<Value> {
         self.ensure_coordinator(&p.project_id).await?;
         let orca = self.orca()?;
-        let task = branch_name(&p.card_id, &p.title);
+        let task = format!("{}{}", branch_name(&p.card_id, &p.title), p.name_suffix());
+        // A reopened card: each repo goes on from its earlier branch when that is not merged yet.
+        let earlier: Vec<ChildWt> = match &p.reopen {
+            Some(_) => self.cards.lock().await.get(&p.card_id).map(|c| c.children.clone()).unwrap_or_default(),
+            None => Vec::new(),
+        };
         let wt = orca
             .call_timeout(
                 &["worktree", "create", "--repo", &format!("id:{}", project.orca_repo_id), "--name", &task, "--base-branch", "main", "--no-parent"],
@@ -191,7 +196,8 @@ impl Engine {
         let root = s(&wt["worktree"]["path"]).ok_or_else(|| anyhow!("Orca không trả đường dẫn thư mục việc"))?;
         let mut children: Vec<ChildWt> = Vec::new();
         for c in &project.children {
-            match self.add_child(&p, c, &root).await {
+            let prior = earlier.iter().find(|e| e.name == c.name).map(|e| e.branch.clone());
+            match self.add_child(&p, c, &root, prior.as_deref()).await {
                 Ok(ch) => children.push(ch),
                 Err(e) => {
                     for ch in &children {
@@ -249,7 +255,10 @@ impl Engine {
         if !skill_names.is_empty() {
             self.sys(&p.card_id, format!("Đã nạp skill: {}.", skill_names.join(", "))).await;
         }
-        let prompt = format!("{}{}", with_layout(&p.prompt, &children), crate::skills::note(&skill_names));
+        if let Some(r) = &p.reopen {
+            self.sys(&p.card_id, format!("Mở lại thẻ (lần {}) với yêu cầu bổ sung: {}", r.round.max(2), r.request.split_whitespace().collect::<Vec<_>>().join(" "))).await;
+        }
+        let prompt = format!("{}{}", with_layout(&p.task_prompt(), &children), crate::skills::note(&skill_names));
         let spec = compose_spec(&p.title, &prompt, &p.mode, &images, &ctx);
         let me = self.clone();
         let card_id = p.card_id.clone();
@@ -258,7 +267,7 @@ impl Engine {
     }
 
     /// One repo's worktree inside the task folder, on the task branch, from a fresh base.
-    async fn add_child(&self, p: &CardStart, c: &ChildRepo, root: &str) -> Result<ChildWt> {
+    async fn add_child(&self, p: &CardStart, c: &ChildRepo, root: &str, prior: Option<&str>) -> Result<ChildWt> {
         let g = p.repo_git.get(&c.name).cloned().unwrap_or_else(|| p.git.clone());
         git::ensure_initial_commit(&c.path).await?;
         let local = git::current_branch(&c.path).await.unwrap_or_else(|| "main".into());
@@ -270,7 +279,14 @@ impl Engine {
                 Err(e) => self.sys(&p.card_id, format!("{}: không lấy được origin/{base} ({e}); dùng nhánh trên máy.", c.name)).await,
             }
         }
+        // Reopened card: go on from this repo's branch of the earlier round if it is not merged.
+        if let Some(b) = prior.filter(|b| !b.is_empty()) {
+            if git::branch_exists(&c.path, b).await && !git::is_ancestor(&c.path, b, &from).await {
+                from = b.to_string();
+            }
+        }
         let mut branch = if g.from_origin() { github::task_branch(&g.branch_prefix, &p.card_id, &p.title) } else { branch_name(&p.card_id, &p.title) };
+        branch.push_str(&p.name_suffix());
         if git::branch_exists(&c.path, &branch).await {
             branch = format!("{branch}-{}", p.card_id.chars().filter(|c| c.is_ascii_alphanumeric()).skip(4).take(4).collect::<String>());
         }

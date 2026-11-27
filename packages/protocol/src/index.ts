@@ -307,6 +307,8 @@ export interface Card {
   usage: CardUsage | null;
   /** When the card passed its board's budget (warned, and stopped if the board says so). */
   overBudgetAt: string | null;
+  /** How many times the card was opened again after it was done, for a follow-up request. */
+  reopens: number;
   attachments: Attachment[];
   /** When the card entered its current status (column); columns other than To Do list cards
    *  in this order, newest last. */
@@ -566,6 +568,8 @@ export interface BridgeMethods {
       effort: Effort | null;
       /** Start Claude without the global MCP servers and plugins. */
       lean: boolean;
+      /** A finished card opened again: its round (2, 3…) and the follow-up request. */
+      reopen?: { round: number; request: string };
       mode: CardMode;
       /** Images to copy into the worktree; the bridge downloads them from the server. */
       attachments: Pick<Attachment, 'id' | 'name' | 'mime'>[];

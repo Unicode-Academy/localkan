@@ -111,6 +111,7 @@ export const api = {
   deleteCard: (id: string) => call('DELETE', `/cards/${id}`),
   start: (id: string) => call<Card>('POST', `/cards/${id}/start`),
   retry: (id: string) => call<Card>('POST', `/cards/${id}/retry`),
+  reopen: (id: string, text: string) => call<Card>('POST', `/cards/${id}/reopen`, { text }),
   reply: (id: string, r: { messageId?: string; text?: string; keys?: TerminalKey[] }) =>
     call<Card>('POST', `/cards/${id}/reply`, r),
   followup: (id: string, text: string, comments: ReviewComment[]) =>

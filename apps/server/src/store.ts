@@ -104,6 +104,9 @@ interface CardDoc {
   overBudgetAt?: string | null;
   /** The budget (USD) the card was last flagged against; a higher budget re-arms the check. */
   overBudgetLimit?: number | null;
+  reopens?: number;
+  /** Usage of the rounds before the card was last reopened; new measurements add to it. */
+  usageBase?: CardUsage | null;
   pr?: PrInfo | null;
   repos?: CardRepo[];
   attachments: Attachment[];
@@ -116,6 +119,7 @@ interface CardDoc {
 /** Fields of a card that callers may change. */
 export type CardPatch = Partial<Omit<Card, 'id' | 'projectId' | 'attachments' | 'statusAt' | 'createdAt' | 'updatedAt'>> & {
   overBudgetLimit?: number | null;
+  usageBase?: CardUsage | null;
 };
 
 export interface CardOwner {
@@ -188,6 +192,7 @@ export function toCard(c: CardDoc): Card {
     planText: c.planText ?? null,
     usage: c.usage ?? null,
     overBudgetAt: c.overBudgetAt ?? null,
+    reopens: c.reopens ?? 0,
     pr: c.pr ?? null,
     repos: c.repos ?? [],
     attachments: c.attachments ?? [],
@@ -414,6 +419,12 @@ export class Store {
   }
 
   /** Card plus the ownership facts needed for authorization checks. */
+  /** Usage of a reopened card's earlier rounds, to add the new round's measurements to. */
+  async usageBase(id: string): Promise<CardUsage | null> {
+    const c = await this.cards.findOne({ _id: id }, { projection: { usageBase: 1 } });
+    return c?.usageBase ?? null;
+  }
+
   /** The budget a card was last flagged against (see Hub.checkBudget), or null. */
   async overBudgetLimit(id: string): Promise<number | null> {
     const c = await this.cards.findOne({ _id: id }, { projection: { overBudgetLimit: 1 } });

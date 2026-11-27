@@ -675,11 +675,13 @@ impl Engine {
         }
         let worktree_base = self.parent_base(&project.repo_path, &from, p.parent.as_ref()).await?;
         context::ensure_excluded(&project.repo_path).await;
-        let wanted_branch = p.git.from_origin().then(|| github::task_branch(&p.git.branch_prefix, &p.card_id, &p.title));
+        let suffix = p.name_suffix();
+        let wanted_branch =
+            p.git.from_origin().then(|| format!("{}{suffix}", github::task_branch(&p.git.branch_prefix, &p.card_id, &p.title)));
         let name = match &wanted_branch {
             // Orca turns "/" into "-" in worktree names; the branch is renamed right after.
             Some(b) => b.replace('/', "-"),
-            None => branch_name(&p.card_id, &p.title),
+            None => format!("{}{suffix}", branch_name(&p.card_id, &p.title)),
         };
         let wt = orca
             .call_timeout(
@@ -753,7 +755,8 @@ impl Engine {
         }
         self.sys(&p.card_id, format!("Đã tạo worktree {path} (nhánh {})", branch.unwrap_or_default())).await;
         if worktree_base != base_ref {
-            self.sys(&p.card_id, format!("Làm tiếp từ nhánh {worktree_base} của thẻ nền.")).await;
+            let whose = if p.reopen.is_some() { "của lần trước (chưa merge)" } else { "của thẻ nền" };
+            self.sys(&p.card_id, format!("Làm tiếp từ nhánh {worktree_base} {whose}.")).await;
         }
 
         let images = self.fetch_attachments(&p.card_id, &path, &p.attachments).await;
@@ -765,7 +768,10 @@ impl Engine {
         if !skill_names.is_empty() {
             self.sys(&p.card_id, format!("Đã nạp skill của bảng: {}.", skill_names.join(", "))).await;
         }
-        let prompt = format!("{}{}", p.prompt, crate::skills::note(&skill_names));
+        if let Some(r) = &p.reopen {
+            self.sys(&p.card_id, format!("Mở lại thẻ (lần {}) với yêu cầu bổ sung: {}", r.round.max(2), one_line_text(&r.request))).await;
+        }
+        let prompt = format!("{}{}", p.task_prompt(), crate::skills::note(&skill_names));
         let spec = compose_spec(&p.title, &prompt, &p.mode, &images, &ctx);
         let me = self.clone();
         let card_id = p.card_id.clone();
@@ -2987,6 +2993,12 @@ fn describe_wait(w: &Value) -> String {
         }
     }
     "Agent đang chờ bạn xác nhận trong terminal.".into()
+}
+
+/// A request on one line, for a log line.
+fn one_line_text(s: &str) -> String {
+    let one: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if one.chars().count() > 200 { format!("{}…", one.chars().take(200).collect::<String>()) } else { one }
 }
 
 /// Map Vietnamese letters with diacritics to their ASCII base letter.
