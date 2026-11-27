@@ -3084,3 +3084,72 @@ label {
   padding: 12px 14px;
   background: var(--surface);
 }
+
+/* A card's exchange with its agent: reports, questions, answers, requests */
+.exchange-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+.exchange {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.ex-item {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--muted);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.ex-item.ex-agent {
+  background: var(--surface-2);
+}
+.ex-item.ex-report {
+  border-left-color: var(--ok);
+}
+.ex-item.ex-ask {
+  border-left-color: var(--warn);
+}
+.ex-item.ex-you {
+  border-left-color: var(--accent);
+}
+.ex-item.partial .ex-text {
+  color: var(--muted);
+  font-style: italic;
+}
+.ex-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.ex-label {
+  font-weight: 600;
+  font-size: 13px;
+}
+.ex-text > :first-child {
+  margin-top: 0;
+}
+.ex-text > :last-child {
+  margin-bottom: 0;
+}
+.outcome {
+  margin: 6px 0 0;
+  font-size: 13.5px;
+}
+.logline.from-report,
+.logline.from-ask,
+.logline.from-answer,
+.logline.from-request {
+  color: var(--text);
+  font-weight: 600;
+}
+.panel-body .reopen {
+  margin: 14px 0 0;
+}

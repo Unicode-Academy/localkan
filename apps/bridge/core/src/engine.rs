@@ -772,6 +772,7 @@ impl Engine {
         }
         if let Some(r) = &p.reopen {
             self.sys(&p.card_id, format!("Mở lại thẻ (lần {}) với yêu cầu bổ sung: {}", r.round.max(2), one_line_text(&r.request))).await;
+            self.log(&p.card_id, "request", vec![redact_line(&format!("Yêu cầu bổ sung (lần {}):\n{}", r.round.max(2), r.request.trim()))]).await;
         }
         let prompt = format!("{}{}", p.task_prompt(&request_images), crate::skills::note(&skill_names));
         let spec = compose_spec(&p.title, &prompt, &p.mode, &images, &ctx);
@@ -1007,7 +1008,7 @@ impl Engine {
                     .map_err(|e2| anyhow!("{e}; {e2}"))?;
             }
             self.update_card(&card.card_id, |c| c.waiting_kind = None).await;
-            self.sys(&card.card_id, format!("Bạn trả lời: {text}")).await;
+            self.log(&card.card_id, "answer", vec![redact_line(&text)]).await;
             let mut patch = CardStatePatch::new(&card.card_id);
             patch.run_state = Some(RUN_RUNNING.into());
             patch.status = Some("in_progress".into());
@@ -1048,7 +1049,7 @@ impl Engine {
             .ok_or_else(|| anyhow!("Thẻ chưa có terminal agent."))?;
         if let Some(text) = p.text.filter(|t| !t.is_empty()) {
             orca.call(&["terminal", "send", "--terminal", &term, "--text", &text, "--enter"]).await?;
-            self.sys(&card.card_id, format!("Bạn gõ vào terminal: {text}")).await;
+            self.log(&card.card_id, "answer", vec![redact_line(&text)]).await;
         }
         for key in p.keys.unwrap_or_default() {
             self.send_key(&term, &key).await?;
@@ -1705,7 +1706,7 @@ impl Engine {
         .await;
         // Skills added to the board since the task started become available too.
         let _ = self.prepare_skills(&card).await;
-        self.sys(&card.card_id, "Gửi yêu cầu sửa cho agent.").await;
+        self.log(&card.card_id, "request", vec![redact_line(&format!("Yêu cầu sửa:\n{}", p.text.trim()))]).await;
         let wt = card.worktree_path.clone().unwrap_or_default();
         let images = self.fetch_attachments(&card.card_id, &wt, &p.attachments).await;
         let mut patch = CardStatePatch::new(&card.card_id);
@@ -2479,7 +2480,7 @@ impl Engine {
                     }
                 }
                 self.update_card(&card.card_id, |c| c.waiting_kind = Some("question".into())).await;
-                self.sys(&card.card_id, format!("Agent hỏi: {}", text.replace('\n', " "))).await;
+                self.log(&card.card_id, "ask", vec![redact_line(&text)]).await;
                 let mut patch = CardStatePatch::new(&card.card_id);
                 patch.run_state = Some(RUN_WAITING.into());
                 patch.status = Some("needs_input".into());
@@ -2524,6 +2525,10 @@ impl Engine {
         let _ = self.poll_output_inner(&card.card_id).await;
         self.poll_activity(&card.card_id).await;
         self.record_handoff(card, summary.as_deref()).await;
+        // The agent's own report, kept in the log: the card shows only the latest one.
+        if let Some(text) = summary.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+            self.log(&card.card_id, "report", vec![redact_line(text)]).await;
+        }
         self.sys(&card.card_id, if ok { "Agent báo đã xong. Chuyển sang Review." } else { "Agent báo thất bại." }).await;
         let mut patch = CardStatePatch::new(&card.card_id);
         patch.run_state = Some(if ok { RUN_SUCCEEDED } else { RUN_FAILED }.into());

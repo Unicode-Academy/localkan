@@ -17,6 +17,7 @@ import { addedText, formatReport } from '../text.ts';
 import { PlanView } from '../components/PlanView.tsx';
 import { UsageSection } from '../components/UsageView.tsx';
 import { ReopenBox } from '../components/ReopenBox.tsx';
+import { ExchangeView, Outcome } from '../components/ExchangeView.tsx';
 import { DraftImages, useImageDraft, type ImageDraft } from '../components/DraftImages.tsx';
 import { Markdown } from '../components/Markdown.tsx';
 import { FinishBox, LogTab, WaitingBox, type Run } from '../components/CardPanel.tsx';
@@ -168,7 +169,9 @@ export function CardScreen({
 
         {card.status === 'done' && (
           <section className="m-section">
+            {card.summary && <div className="m-section-head">Agent báo cáo</div>}
             {card.summary && <Markdown text={formatReport(card.summary)} />}
+            <Outcome card={card} />
             {card.prUrl && (
               <a className="m-btn" href={card.prUrl} target="_blank" rel="noreferrer">
                 <ExternalLink /> Mở Pull Request
@@ -181,6 +184,12 @@ export function CardScreen({
           <section className="m-section">
             <div className="m-section-head">Kế hoạch</div>
             <PlanView card={card} project={project} diff={null} toasts={toasts} />
+          </section>
+        )}
+
+        {card.status === 'done' && (
+          <section className="m-section">
+            <ExchangeView card={card} project={project} log={log} />
           </section>
         )}
 

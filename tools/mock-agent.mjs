@@ -107,6 +107,12 @@ function finish(spec, taskId, dispatchId, from, answer) {
     appendFileSync(file, `- ${new Date().toISOString()} ${spec.split('\n')[0].slice(0, 120)}${answer ? ` (answer: ${answer})` : ''}\n`);
     log(`edited ${file}`);
   }
+  // A question card: its answer goes to .localkan/answer.md.
+  if (spec.includes('.localkan/answer.md')) {
+    mkdirSync(join(process.cwd(), '.localkan'), { recursive: true });
+    writeFileSync(join(process.cwd(), '.localkan', 'answer.md'), `# Trả lời (mock)\n\n${spec.split('\n')[0]}\n\n- Ý thứ nhất.\n- Ý thứ hai.\n`);
+    log('wrote .localkan/answer.md');
+  }
   if (spec.includes('.localkan/handoff.md')) {
     mkdirSync(join(process.cwd(), '.localkan'), { recursive: true });
     const saw = [/Project memory/.test(spec) && 'project memory', /continues the earlier task/.test(spec) && 'parent handoff', /Recent work/.test(spec) && 'recent notes']

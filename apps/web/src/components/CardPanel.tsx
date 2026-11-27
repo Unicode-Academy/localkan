@@ -23,6 +23,7 @@ import { closeConfirm, MODE_LABELS, MODE_TAGS } from '../modes.ts';
 import { agentText, readLastModel } from '../models.ts';
 import { addedText, clockLabel, formatReport, listChoices, splitOptions } from '../text.ts';
 import { Markdown } from './Markdown.tsx';
+import { ExchangeView, Outcome } from './ExchangeView.tsx';
 import { PlanView } from './PlanView.tsx';
 import { EffortSelect, ModelSelect } from './ModelSelect.tsx';
 import { Dialog } from './Dialog.tsx';
@@ -39,7 +40,7 @@ import { ReopenBox } from './ReopenBox.tsx';
 import type { ToastApi } from './Toasts.tsx';
 import { appendPhrase, VoiceButton } from './VoiceButton.tsx';
 
-type Tab = 'log' | 'diff' | 'terminal' | 'task' | 'preview';
+type Tab = 'chat' | 'log' | 'diff' | 'terminal' | 'task' | 'preview';
 
 export function CardPanel({
   card,
@@ -62,7 +63,8 @@ export function CardPanel({
   // it is a side panel and the board stays usable.
   useScrollLock(useNarrow());
   const models = useAgentModels(project.deviceId);
-  const defaultTab: Tab = card.status === 'todo' ? 'task' : card.status === 'review' ? 'diff' : 'log';
+  // A finished card opens on what was said on it: the reports, questions, answers and handoff note.
+  const defaultTab: Tab = card.status === 'todo' ? 'task' : card.status === 'review' ? 'diff' : card.status === 'done' ? 'chat' : 'log';
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [busy, setBusy] = useState(false);
   const started = card.status !== 'todo';
@@ -79,10 +81,11 @@ export function CardPanel({
     );
   }, [card.id, started, setLog]);
 
-  // Jump to the diff when the agent finishes.
+  // Jump to the diff when the agent finishes, and to the exchange when the card is done.
   const prevStatus = useRef(card.status);
   useEffect(() => {
     if (prevStatus.current !== card.status && card.status === 'review') setTab('diff');
+    if (prevStatus.current !== card.status && card.status === 'done') setTab('chat');
     prevStatus.current = card.status;
   }, [card.status]);
 
@@ -137,12 +140,12 @@ export function CardPanel({
         {card.summary && card.status !== 'todo' && (
           <div className="summary">
             <div className="summary-head">Agent báo cáo</div>
-          <Markdown text={formatReport(card.summary)} />
+            <Markdown text={formatReport(card.summary)} />
+            <Outcome card={card} />
           </div>
         )}
 
         <UsageSection card={card} project={project} />
-        {card.status === 'done' && <ReopenBox card={card} toasts={toasts} />}
 
         {card.waiting && <WaitingBox card={card} cards={cards} project={project} toasts={toasts} busy={busy} run={run} />}
 
@@ -195,7 +198,7 @@ export function CardPanel({
         </div>
 
         <nav className="tabs" role="tablist">
-          {(['task', 'log', 'diff', 'preview', 'terminal'] as Tab[]).map((t) => (
+          {(['task', 'chat', 'log', 'diff', 'preview', 'terminal'] as Tab[]).map((t) => (
             <button
               key={t}
               role="tab"
@@ -205,7 +208,7 @@ export function CardPanel({
               disabled={t !== 'task' && (!started || (card.status === 'done' && (t === 'preview' || t === 'terminal')))}
               title={card.status === 'done' && (t === 'preview' || t === 'terminal') ? 'Việc đã xong: worktree và terminal đã được dọn' : undefined}
             >
-              {{ task: 'Nhiệm vụ', log: 'Log', diff: card.mode === 'plan' ? 'Kế hoạch' : 'Diff', preview: 'Xem trước', terminal: 'Terminal' }[t]}
+              {{ task: 'Nhiệm vụ', chat: 'Trao đổi', log: 'Log', diff: card.mode === 'plan' ? 'Kế hoạch' : 'Diff', preview: 'Xem trước', terminal: 'Terminal' }[t]}
               {t === 'preview' && card.preview?.status === 'running' && <span className="dot ok tab-dot" aria-label="đang chạy" />}
             </button>
           ))}
@@ -213,6 +216,13 @@ export function CardPanel({
 
         <div className="panel-body">
           {tab === 'task' && <TaskTab card={card} cards={cards} models={models} toasts={toasts} />}
+          {tab === 'chat' && (
+            <>
+              <ExchangeView card={card} project={project} log={log} />
+              {/* A follow-up request goes under the exchange, like the next message. */}
+              {card.status === 'done' && <ReopenBox card={card} toasts={toasts} />}
+            </>
+          )}
           {tab === 'log' && <LogTab log={log} />}
           {tab === 'diff' && <ReviewTab card={card} project={project} toasts={toasts} comments={comments} setComments={setComments} />}
           {tab === 'terminal' && <TerminalTab card={card} busy={busy} run={run} toasts={toasts} />}
@@ -604,7 +614,7 @@ export function LogTab({ log }: { log: LogLine[] }) {
   const ref = useRef<HTMLPreElement>(null);
   const stick = useRef(true);
   const [filter, setFilter] = useState<LogFilter>('all');
-  const shown = filter === 'all' ? log : log.filter((l) => (filter === 'activity' ? l.source !== 'system' : l.source === 'system'));
+  const shown = filter === 'all' ? log : log.filter((l) => (filter === 'activity' ? l.source === 'activity' || l.source === 'agent' : l.source === 'system'));
   useEffect(() => {
     const el = ref.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
@@ -688,7 +698,7 @@ function ReviewTab({
       </div>
     );
   }
-  const answer = card.mode === 'ask' && diff ? addedText(diff.patch, '.localkan/answer.md') : null;
+  const answer = card.mode !== 'ask' ? null : card.status === 'done' && card.answerText ? card.answerText : diff ? addedText(diff.patch, '.localkan/answer.md') : null;
   return (
     <div className="review">
       {answer && (

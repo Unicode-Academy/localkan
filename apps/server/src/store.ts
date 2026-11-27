@@ -99,12 +99,14 @@ interface CardDoc {
   autoPreview?: boolean;
   planImport?: { at: string; count: number } | null;
   planText?: string | null;
+  answerText?: string | null;
   usage?: CardUsage | null;
   effort?: Effort | null;
   overBudgetAt?: string | null;
   /** The budget (USD) the card was last flagged against; a higher budget re-arms the check. */
   overBudgetLimit?: number | null;
   reopens?: number;
+  outcome?: string | null;
   /** Usage of the rounds before the card was last reopened; new measurements add to it. */
   usageBase?: CardUsage | null;
   pr?: PrInfo | null;
@@ -190,9 +192,11 @@ export function toCard(c: CardDoc): Card {
     autoPreview: c.autoPreview ?? false,
     planImport: c.planImport ?? null,
     planText: c.planText ?? null,
+    answerText: c.answerText ?? null,
     usage: c.usage ?? null,
     overBudgetAt: c.overBudgetAt ?? null,
     reopens: c.reopens ?? 0,
+    outcome: c.outcome ?? null,
     pr: c.pr ?? null,
     repos: c.repos ?? [],
     attachments: c.attachments ?? [],

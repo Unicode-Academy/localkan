@@ -259,6 +259,7 @@ impl Engine {
         }
         if let Some(r) = &p.reopen {
             self.sys(&p.card_id, format!("Mở lại thẻ (lần {}) với yêu cầu bổ sung: {}", r.round.max(2), r.request.split_whitespace().collect::<Vec<_>>().join(" "))).await;
+            self.log(&p.card_id, "request", vec![crate::redact::redact_line(&format!("Yêu cầu bổ sung (lần {}):\n{}", r.round.max(2), r.request.trim()))]).await;
         }
         let prompt = format!("{}{}", with_layout(&p.task_prompt(&request_images), &children), crate::skills::note(&skill_names));
         let spec = compose_spec(&p.title, &prompt, &p.mode, &images, &ctx);

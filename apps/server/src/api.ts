@@ -21,6 +21,7 @@ import {
   type GitSettings,
   DEFAULT_GIT_SETTINGS,
   PLAN_FILE,
+  ANSWER_FILE,
   PLAN_TEXT_MAX,
   addedText,
   mergeUsage,
@@ -190,15 +191,15 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     return card;
   };
 
-  /** The plan file a planning card's agent wrote, read from its worktree; null when there is
-   *  none or the worktree cannot be read (closing goes on either way). */
-  const readPlanText = async (deviceId: string, cardId: string): Promise<string | null> => {
+  /** A file the card's agent wrote (the plan, the answer), read from its worktree; null when
+   *  there is none or the worktree cannot be read (closing goes on either way). */
+  const readAgentFile = async (deviceId: string, cardId: string, file: string): Promise<string | null> => {
     try {
       const diff = await hub.request(deviceId, 'card.diff', { cardId }, 60_000);
-      const text = addedText(diff.patch, PLAN_FILE)?.trim();
+      const text = addedText(diff.patch, file)?.trim();
       return text ? text.slice(0, PLAN_TEXT_MAX) : null;
     } catch (err) {
-      console.warn(`plan of card ${cardId} not kept: ${(err as Error).message}`);
+      console.warn(`${file} of card ${cardId} not kept: ${(err as Error).message}`);
       return null;
     }
   };
@@ -738,6 +739,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
         summary: null,
         waiting: null,
         pr: null,
+        outcome: null,
         reopens,
         usageBase: card.usage,
       }),
@@ -884,11 +886,15 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     const action = b.action ?? 'commit';
     if (!['ship', 'merge_push', 'merge_pr', 'commit', 'pr', 'merge', 'discard'].includes(action)) throw new HttpError(400, 'Hành động không hợp lệ.');
     const project = await ownProject(c, card.projectId);
-    // A plan lives in the card's worktree, which finishing removes: keep it on the card first,
-    // so it can still be read and imported from Done.
+    // A plan or an answer lives in the card's worktree, which finishing removes: keep it on the
+    // card first, so it can still be read (and a plan imported) from Done.
     if (card.mode === 'plan') {
-      const planText = await readPlanText(deviceId, card.id);
+      const planText = await readAgentFile(deviceId, card.id, PLAN_FILE);
       if (planText) await store.updateCard(card.id, { planText });
+    }
+    if (card.mode === 'ask') {
+      const answerText = await readAgentFile(deviceId, card.id, ANSWER_FILE);
+      if (answerText) await store.updateCard(card.id, { answerText });
     }
     const res = await hub.request(
       deviceId,
@@ -903,8 +909,9 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       prUrl: res.prUrl ?? card.prUrl,
       ...(res.repos ? { repos: res.repos } : {}),
       ...(res.usage ? { usage: mergeUsage(await store.usageBase(card.id), res.usage) } : {}),
-      // Closing a question or a plan discards nothing of value: keep the agent's report.
-      summary: card.mode !== 'act' && card.summary ? card.summary : res.message,
+      // The agent's report stays; what finishing did goes beside it.
+      summary: card.summary ?? res.message,
+      outcome: res.message,
       error: null,
       preview: null,
       pr: null,

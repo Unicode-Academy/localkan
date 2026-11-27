@@ -71,6 +71,9 @@ export const CARD_MODES: readonly CardMode[] = ['act', 'ask', 'plan'];
 /** Where a planning agent writes its plan (in its worktree). */
 export const PLAN_FILE = '.localkan/plan.json';
 
+/** Where a question card's agent writes its answer (in its worktree). */
+export const ANSWER_FILE = '.localkan/answer.md';
+
 /** One task of a plan: becomes a To Do card on import. */
 export interface PlanTask {
   title: string;
@@ -306,12 +309,16 @@ export interface Card {
   /** Planning card: its plan file, kept on the card when it closes (the worktree that held it
    *  is removed then), so the plan can still be read and imported from Done. */
   planText: string | null;
+  /** Question card: its answer file, kept on the card when it closes (like `planText`). */
+  answerText: string | null;
   /** Tokens the agent spent on this card, per model; null until first measured. */
   usage: CardUsage | null;
   /** When the card passed its board's budget (warned, and stopped if the board says so). */
   overBudgetAt: string | null;
   /** How many times the card was opened again after it was done, for a follow-up request. */
   reopens: number;
+  /** What finishing the card did ("Đã merge … vào main"); the agent's report stays in `summary`. */
+  outcome: string | null;
   attachments: Attachment[];
   /** When the card entered its current status (column); columns other than To Do list cards
    *  in this order, newest last. */
@@ -452,8 +459,10 @@ export interface LogLine {
   seq: number;
   ts: string;
   /** `activity`: a step of the agent (file read or edited, command run, what it said), read
-   *  from its session record. */
-  source: 'agent' | 'system' | 'activity';
+   *  from its session record. The exchange between agent and reviewer: `report` (what the
+   *  agent reported when it finished a round), `ask` (its question), `answer` (the reply, or
+   *  what was typed into its terminal), `request` (a follow-up or reopen request). */
+  source: 'agent' | 'system' | 'activity' | 'report' | 'ask' | 'answer' | 'request';
   text: string;
 }
 

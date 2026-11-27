@@ -2,7 +2,8 @@
 //! `.localkan/` folder (excluded from git through `.git/info/exclude`, never committed):
 //!
 //!   .localkan/memory.md            project memory: conventions, stack, decisions (human-edited)
-//!   .localkan/handoffs/<card>.md   one handoff note per card, written when its agent finishes
+//!   .localkan/handoffs/<date>_<time>_<card>.md   one handoff note per card, written when its
+//!                                  agent finishes; the time prefix (local) sorts them in order
 //!
 //! Every new card's task spec gets the memory, the full note of the card it continues from,
 //! and short excerpts of recent notes. The server never stores any of this.
@@ -44,9 +45,58 @@ fn handoffs_dir(repo: &str) -> PathBuf {
     Path::new(repo).join(".localkan").join("handoffs")
 }
 
-fn handoff_path(repo: &str, card_id: &str) -> PathBuf {
-    let safe: String = card_id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
-    handoffs_dir(repo).join(format!("{safe}.md"))
+fn safe_id(card_id: &str) -> String {
+    card_id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect()
+}
+
+/// `2026-11-27_1102_<card>.md`: the note's time (local) first, so a listing sorts in order.
+fn handoff_name(card_id: &str, updated_at: &str) -> String {
+    let at = chrono::DateTime::parse_from_rfc3339(updated_at)
+        .map(|t| t.with_timezone(&chrono::Local))
+        .unwrap_or_else(|_| chrono::Local::now());
+    format!("{}_{}.md", at.format("%Y-%m-%d_%H%M"), safe_id(card_id))
+}
+
+fn has_time_prefix(name: &str) -> bool {
+    let b = name.as_bytes();
+    b.len() > 16
+        && b[..16].iter().enumerate().all(|(i, c)| match i {
+            4 | 7 => *c == b'-',
+            10 => *c == b'_',
+            15 => *c == b'_',
+            _ => c.is_ascii_digit(),
+        })
+}
+
+/// Notes from before the time prefix (`<card>.md`) get it, from the time written in them.
+fn add_time_prefixes(repo: &str) {
+    let Ok(rd) = std::fs::read_dir(handoffs_dir(repo)) else { return };
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if has_time_prefix(&name) || !name.ends_with(".md") {
+            continue;
+        }
+        let Some(note) = std::fs::read_to_string(e.path()).ok().and_then(|t| parse(&t)) else { continue };
+        // Only Localkan's own notes (named after their card), not other files kept there.
+        if name != format!("{}.md", safe_id(&note.card_id)) {
+            continue;
+        }
+        let to = handoffs_dir(repo).join(handoff_name(&note.card_id, &note.updated_at));
+        if !to.exists() {
+            let _ = std::fs::rename(e.path(), to);
+        }
+    }
+}
+
+/// The card's note file, whichever time it carries.
+fn handoff_path(repo: &str, card_id: &str) -> Option<PathBuf> {
+    add_time_prefixes(repo);
+    let tail = format!("_{}.md", safe_id(card_id));
+    let rd = std::fs::read_dir(handoffs_dir(repo)).ok()?;
+    rd.flatten()
+        .map(|e| e.path())
+        .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().ends_with(&tail)))
+        .max()
 }
 
 pub async fn ensure_excluded(repo: &str) {
@@ -131,29 +181,38 @@ fn parse(text: &str) -> Option<HandoffNote> {
     (!note.card_id.is_empty()).then_some(note)
 }
 
+/// Write the card's note as of now: a new file named with its time, replacing the card's earlier
+/// note (a reopened card's new round lands at the end of the listing).
 pub async fn write_handoff(repo: &str, note: &HandoffNote) -> Result<()> {
     std::fs::create_dir_all(handoffs_dir(repo)).context("không tạo được thư mục .localkan/handoffs")?;
     ensure_excluded(repo).await;
-    std::fs::write(handoff_path(repo, &note.card_id), render(note))?;
+    let to = handoffs_dir(repo).join(handoff_name(&note.card_id, &note.updated_at));
+    if let Some(old) = handoff_path(repo, &note.card_id).filter(|p| *p != to) {
+        let _ = std::fs::remove_file(old);
+    }
+    std::fs::write(to, render(note))?;
     Ok(())
 }
 
 pub fn read_handoff(repo: &str, card_id: &str) -> Option<HandoffNote> {
-    std::fs::read_to_string(handoff_path(repo, card_id)).ok().and_then(|t| parse(&t))
+    std::fs::read_to_string(handoff_path(repo, card_id)?).ok().and_then(|t| parse(&t))
 }
 
-/// Record how the card ended (committed, merged, PR, discarded).
+/// Record how the card ended (committed, merged, PR, discarded), in the same file: the name keeps
+/// the time the agent finished.
 pub async fn set_status(repo: &str, card_id: &str, status: &str, now: &str) -> Result<()> {
-    if let Some(mut note) = read_handoff(repo, card_id) {
+    let Some(path) = handoff_path(repo, card_id) else { return Ok(()) };
+    if let Some(mut note) = std::fs::read_to_string(&path).ok().and_then(|t| parse(&t)) {
         note.status = status.to_string();
         note.updated_at = now.to_string();
-        write_handoff(repo, &note).await?;
+        std::fs::write(path, render(&note))?;
     }
     Ok(())
 }
 
 /// All notes of the repo, newest first.
 pub fn list_handoffs(repo: &str) -> Vec<HandoffNote> {
+    add_time_prefixes(repo);
     let mut notes: Vec<HandoffNote> = std::fs::read_dir(handoffs_dir(repo))
         .map(|it| {
             it.filter_map(|e| e.ok())
@@ -265,8 +324,9 @@ mod tests {
             updated_at: t.into(),
             content: format!("did {id}"),
         };
+        // Written the old way (`<card>.md`): read through the renaming to `<time>_<card>.md`.
         for n in [mk("a", "merged", "1"), mk("b", "discarded", "2"), mk("c", "committed", "3")] {
-            std::fs::write(handoff_path(&repo, &n.card_id), render(&n)).unwrap();
+            std::fs::write(dir.join(format!(".localkan/handoffs/{}.md", n.card_id)), render(&n)).unwrap();
         }
         let parent = ParentRef { card_id: "c".into(), title: "Task c".into(), branch: Some("lk-c".into()) };
         let ctx = compose_context(&repo, "new", Some(&parent));
@@ -275,6 +335,44 @@ mod tests {
         assert!(ctx.contains("did a"));
         assert!(!ctx.contains("did b"), "discarded notes are left out");
         assert_eq!(ctx.matches("did c").count(), 1, "parent is not repeated in recent notes");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
+    async fn handoff_files_sort_by_time() {
+        let dir = std::env::temp_dir().join(format!("lk-handoff-names-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let repo = dir.to_string_lossy().to_string();
+        std::fs::create_dir_all(dir.join(".localkan/handoffs")).unwrap();
+        let note = |id: &str, t: &str| HandoffNote {
+            card_id: id.into(),
+            title: format!("Task {id}"),
+            agent: "claude".into(),
+            branch: None,
+            status: "in_review".into(),
+            updated_at: t.into(),
+            content: format!("did {id}"),
+        };
+        let names = || {
+            let mut v: Vec<String> = std::fs::read_dir(dir.join(".localkan/handoffs")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+            v.sort();
+            v
+        };
+        let local = |t: &str| chrono::DateTime::parse_from_rfc3339(t).unwrap().with_timezone(&chrono::Local).format("%Y-%m-%d_%H%M").to_string();
+        // An old note named after its card gets the time prefix; other files stay as they are.
+        std::fs::write(dir.join(".localkan/handoffs/old-1.md"), render(&note("old-1", "2026-11-10T09:00:00Z"))).unwrap();
+        std::fs::write(dir.join(".localkan/handoffs/README.md"), "notes").unwrap();
+        write_handoff(&repo, &note("new-2", "2026-11-27T04:02:00Z")).await.unwrap();
+        assert_eq!(names(), [format!("{}_old-1.md", local("2026-11-10T09:00:00Z")), format!("{}_new-2.md", local("2026-11-27T04:02:00Z")), "README.md".to_string()]);
+        // A status change keeps the name; a new note for the card replaces it with the new time.
+        set_status(&repo, "new-2", "merged", "2026-11-28T01:00:00Z").await.unwrap();
+        assert_eq!(read_handoff(&repo, "new-2").unwrap().status, "merged");
+        assert!(names().contains(&format!("{}_new-2.md", local("2026-11-27T04:02:00Z"))));
+        write_handoff(&repo, &note("new-2", "2026-11-29T05:00:00Z")).await.unwrap();
+        let n = names();
+        assert_eq!(n.iter().filter(|x| x.ends_with("_new-2.md")).count(), 1);
+        assert!(n.contains(&format!("{}_new-2.md", local("2026-11-29T05:00:00Z"))));
+        assert_eq!(list_handoffs(&repo).len(), 2);
         std::fs::remove_dir_all(dir).ok();
     }
 }
