@@ -357,7 +357,7 @@ export function WaitingBox({
             {options.map((o) => (
               <button
                 key={o}
-                className="btn"
+                className="btn choice"
                 disabled={busy}
                 onClick={() => answer({ messageId: w.messageId, text: o }, `Đã trả lời: ${o}`)}
               >

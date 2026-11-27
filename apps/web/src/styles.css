@@ -818,7 +818,16 @@ label {
   background: var(--waiting-bg);
   border: 1px solid var(--waiting-border);
   display: grid;
+  /* One column no wider than the box: a long choice or word wraps instead of widening it. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
+  overflow-wrap: anywhere;
+}
+/* An answer the agent offered: its whole text, wrapped, however long. */
+.btn.choice {
+  white-space: normal;
+  text-align: left;
+  max-width: 100%;
 }
 .finish-box {
   margin: 12px 0 0;
