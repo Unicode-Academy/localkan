@@ -17,6 +17,7 @@ import { addedText, formatReport } from '../text.ts';
 import { PlanView } from '../components/PlanView.tsx';
 import { UsageSection } from '../components/UsageView.tsx';
 import { ReopenBox } from '../components/ReopenBox.tsx';
+import { DraftImages, useImageDraft, type ImageDraft } from '../components/DraftImages.tsx';
 import { Markdown } from '../components/Markdown.tsx';
 import { FinishBox, LogTab, WaitingBox, type Run } from '../components/CardPanel.tsx';
 import { DiffView } from '../components/DiffView.tsx';
@@ -410,15 +411,13 @@ function Review({
           comments={comments}
           toasts={toasts}
           onClose={() => setAsking(false)}
-          onSend={(text) =>
-            run(
-              () =>
-                api.followup(card.id, text, comments).then(() => {
-                  setComments([]);
-                  setAsking(false);
-                }),
-              'Đã gửi yêu cầu sửa cho agent.',
-            )
+          onSend={(text, images) =>
+            run(async () => {
+              const ids = await images.upload(card.id);
+              await api.followup(card.id, text, comments, ids);
+              setComments([]);
+              setAsking(false);
+            }, 'Đã gửi yêu cầu sửa cho agent.')
           }
           busy={busy}
         />
@@ -585,10 +584,11 @@ function RequestChanges({
   toasts: ToastApi;
   busy: boolean;
   onClose: () => void;
-  onSend: (text: string) => void;
+  onSend: (text: string, images: ImageDraft) => void;
 }) {
   const [text, setText] = useState('');
   const [interim, setInterim] = useState('');
+  const images = useImageDraft(toasts.error);
   useScrollLock();
   return (
     <div className="m-sheet-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -605,12 +605,14 @@ function RequestChanges({
           onChange={(e) => setText(e.target.value)}
           rows={4}
           placeholder={placeholder}
+          onPaste={images.onPaste}
           autoFocus
         />
         {interim && <p className="interim">{interim}</p>}
+        <DraftImages draft={images} onError={toasts.error} disabled={busy} />
         <VoiceButton big onFinal={(t) => setText((p) => appendPhrase(p, t))} onInterim={setInterim} onError={toasts.error} />
         {comments.length > 0 && <p className="muted small">Kèm {comments.length} nhận xét trên diff.</p>}
-        <button className="m-cta" disabled={busy || (!text.trim() && !comments.length)} onClick={() => onSend(text.trim())}>
+        <button className="m-cta" disabled={busy || (!text.trim() && !comments.length && !images.files.length)} onClick={() => onSend(text.trim(), images)}>
           Gửi cho agent
         </button>
       </div>

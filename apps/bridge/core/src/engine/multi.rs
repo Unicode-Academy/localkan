@@ -245,7 +245,9 @@ impl Engine {
             self.sys(&p.card_id, format!("{}: nhánh {} (từ {})", ch.name, ch.branch, ch.base_ref)).await;
         }
 
-        let images = self.fetch_attachments(&p.card_id, &root, &p.attachments).await;
+        let fetched = self.fetch_attachments_by_id(&p.card_id, &root, &p.attachments).await;
+        let request_images = reopen_images(&p, &fetched);
+        let images: Vec<String> = fetched.into_iter().map(|(_, f)| f).collect();
         let ctx = context::compose_context(&project.repo_path, &p.card_id, p.parent.as_ref());
         let skill_names = crate::skills::prepare_multi(
             &project.repo_path,
@@ -258,7 +260,7 @@ impl Engine {
         if let Some(r) = &p.reopen {
             self.sys(&p.card_id, format!("Mở lại thẻ (lần {}) với yêu cầu bổ sung: {}", r.round.max(2), r.request.split_whitespace().collect::<Vec<_>>().join(" "))).await;
         }
-        let prompt = format!("{}{}", with_layout(&p.task_prompt(), &children), crate::skills::note(&skill_names));
+        let prompt = format!("{}{}", with_layout(&p.task_prompt(&request_images), &children), crate::skills::note(&skill_names));
         let spec = compose_spec(&p.title, &prompt, &p.mode, &images, &ctx);
         let me = self.clone();
         let card_id = p.card_id.clone();

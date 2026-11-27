@@ -227,6 +227,9 @@ pub struct CardStart {
 pub struct Reopen {
     pub round: u32,
     pub request: String,
+    /// The card's images that came with this request (the others are from earlier rounds).
+    #[serde(default)]
+    pub attachment_ids: Vec<String>,
 }
 
 impl CardStart {
@@ -235,15 +238,17 @@ impl CardStart {
         self.reopen.as_ref().map(|r| format!("-r{}", r.round.max(2))).unwrap_or_default()
     }
 
-    /// The task as the agent reads it: on a reopened card, the earlier task plus the new request.
-    pub fn task_prompt(&self) -> String {
+    /// The task as the agent reads it: on a reopened card, the earlier task plus the new request
+    /// (and the paths of the images sent with it).
+    pub fn task_prompt(&self, request_images: &[String]) -> String {
         match &self.reopen {
             None => self.prompt.clone(),
             Some(r) => format!(
-                "{}\n\n---\nThis task was finished before (round {} now). Its handoff note is in the project context below, and its changes are already in the code you start from. The reviewer now asks for this follow-up; do it, and keep what was done unless the request changes it:\n\n{}",
+                "{}\n\n---\nThis task was finished before (round {} now). Its handoff note is in the project context below, and its changes are already in the code you start from. The reviewer now asks for this follow-up; do it, and keep what was done unless the request changes it:\n\n{}{}",
                 self.prompt.trim(),
                 r.round.max(2),
-                r.request.trim()
+                r.request.trim(),
+                images_note(request_images)
             ),
         }
     }
@@ -387,6 +392,9 @@ pub struct CardReply {
     pub text: Option<String>,
     #[serde(default)]
     pub keys: Option<Vec<String>>,
+    /// Images sent with the answer or message: copied into the worktree, paths added to it.
+    #[serde(default)]
+    pub attachments: Vec<AttachmentRef>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -394,6 +402,9 @@ pub struct CardReply {
 pub struct CardFollowup {
     pub card_id: String,
     pub text: String,
+    /// Images sent with the request: copied into the worktree, paths added to the request.
+    #[serde(default)]
+    pub attachments: Vec<AttachmentRef>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -537,6 +548,15 @@ pub struct BrowserShot {
     pub title: String,
 }
 
+/// "Images from the reviewer for this request…" with one path per line; empty without images.
+pub fn images_note(paths: &[String]) -> String {
+    if paths.is_empty() {
+        return String::new();
+    }
+    let list: Vec<String> = paths.iter().map(|p| format!("- {p}")).collect();
+    format!("\n\nImages from the reviewer for this request (open and look at each before you start; git ignores them):\n{}", list.join("\n"))
+}
+
 #[cfg(test)]
 mod reopen_tests {
     use super::*;
@@ -549,14 +569,16 @@ mod reopen_tests {
         }))
         .unwrap();
         assert_eq!(p.name_suffix(), "");
-        assert_eq!(p.task_prompt(), "Làm form đăng ký.");
+        assert_eq!(p.task_prompt(&[]), "Làm form đăng ký.");
         p = serde_json::from_value(serde_json::json!({
             "cardId": "c1", "projectId": "p1", "repoPath": "/r", "title": "Sửa form", "prompt": "Làm form đăng ký.",
             "agent": "claude", "mode": "act", "reopen": { "round": 2, "request": "Đổi màu nút sang cam." }
         }))
         .unwrap();
         assert_eq!(p.name_suffix(), "-r2");
-        let t = p.task_prompt();
+        let t = p.task_prompt(&[]);
         assert!(t.starts_with("Làm form đăng ký.") && t.contains("round 2") && t.ends_with("Đổi màu nút sang cam."));
+        let t = p.task_prompt(&[".localkan/attachments/ab12cd34-nut.png".to_string()]);
+        assert!(t.contains("Đổi màu nút sang cam.\n\nImages from the reviewer") && t.ends_with("- .localkan/attachments/ab12cd34-nut.png"));
     }
 }

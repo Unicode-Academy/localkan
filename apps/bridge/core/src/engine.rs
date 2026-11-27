@@ -759,7 +759,9 @@ impl Engine {
             self.sys(&p.card_id, format!("Làm tiếp từ nhánh {worktree_base} {whose}.")).await;
         }
 
-        let images = self.fetch_attachments(&p.card_id, &path, &p.attachments).await;
+        let fetched = self.fetch_attachments_by_id(&p.card_id, &path, &p.attachments).await;
+        let request_images = reopen_images(&p, &fetched);
+        let images: Vec<String> = fetched.into_iter().map(|(_, f)| f).collect();
         let ctx = context::compose_context(&project.repo_path, &p.card_id, p.parent.as_ref());
         if !ctx.is_empty() {
             self.sys(&p.card_id, "Đã đưa bộ nhớ dự án và ghi chú bàn giao vào nhiệm vụ.").await;
@@ -771,7 +773,7 @@ impl Engine {
         if let Some(r) = &p.reopen {
             self.sys(&p.card_id, format!("Mở lại thẻ (lần {}) với yêu cầu bổ sung: {}", r.round.max(2), one_line_text(&r.request))).await;
         }
-        let prompt = format!("{}{}", p.task_prompt(), crate::skills::note(&skill_names));
+        let prompt = format!("{}{}", p.task_prompt(&request_images), crate::skills::note(&skill_names));
         let spec = compose_spec(&p.title, &prompt, &p.mode, &images, &ctx);
         let me = self.clone();
         let card_id = p.card_id.clone();
@@ -972,9 +974,26 @@ impl Engine {
         Ok(())
     }
 
-    async fn reply(self: &Arc<Self>, p: CardReply) -> Result<Value> {
+    async fn reply(self: &Arc<Self>, mut p: CardReply) -> Result<Value> {
         let card = self.card(&p.card_id).await?;
         let orca = self.orca()?;
+        // Images with the answer: into the worktree, their paths into the text the agent gets.
+        if !p.attachments.is_empty() {
+            let wt = card.worktree_path.clone().unwrap_or_default();
+            let images = self.fetch_attachments(&card.card_id, &wt, &p.attachments).await;
+            if !images.is_empty() {
+                let said = p.text.clone().unwrap_or_default();
+                let joined = images.join(", ");
+                p.text = Some(if p.message_id.as_deref().is_some_and(|m| !m.is_empty()) {
+                    format!("{}\n\nẢnh đính kèm (mở xem từng ảnh): {joined}", said.trim()).trim().to_string()
+                } else if said.trim().is_empty() {
+                    format!("Xem ảnh đính kèm: {joined}")
+                } else {
+                    // Typed into the terminal: one line.
+                    format!("{} (ảnh đính kèm, mở xem: {joined})", said.trim())
+                });
+            }
+        }
 
         if let Some(mid) = p.message_id.filter(|m| !m.is_empty()) {
             let text = p.text.unwrap_or_default();
@@ -1386,7 +1405,14 @@ impl Engine {
 
     /// Download the card's images into `<worktree>/.localkan/attachments/` (git-ignored for
     /// this repo) and return their worktree-relative paths for the task spec.
+    /// Copy the card's images into the worktree's `.localkan/attachments/` (git ignores it) and
+    /// return their worktree-relative paths, in order. Named by image id, so fetching one again
+    /// (a retry, a later round) rewrites the same file.
     async fn fetch_attachments(&self, card_id: &str, wt: &str, list: &[AttachmentRef]) -> Vec<String> {
+        self.fetch_attachments_by_id(card_id, wt, list).await.into_iter().map(|(_, p)| p).collect()
+    }
+
+    async fn fetch_attachments_by_id(&self, card_id: &str, wt: &str, list: &[AttachmentRef]) -> Vec<(String, String)> {
         if list.is_empty() {
             return Vec::new();
         }
@@ -1404,8 +1430,9 @@ impl Engine {
         }
         let client = reqwest::Client::new();
         let mut files = Vec::new();
-        for (i, a) in list.iter().enumerate() {
-            let file = format!("{:02}-{}", i + 1, attachment_file_name(&a.name, &a.mime));
+        for a in list {
+            let short: String = a.id.chars().filter(|c| c.is_ascii_alphanumeric()).take(8).collect();
+            let file = format!("{short}-{}", attachment_file_name(&a.name, &a.mime));
             let url = format!("{}/api/bridge/attachments/{}", server.trim_end_matches('/'), a.id);
             let res = async {
                 let r = client.get(&url).bearer_auth(token).send().await?.error_for_status()?;
@@ -1414,7 +1441,7 @@ impl Engine {
             .await;
             match res {
                 Ok(bytes) => match std::fs::write(dir.join(&file), &bytes) {
-                    Ok(()) => files.push(format!(".localkan/attachments/{file}")),
+                    Ok(()) => files.push((a.id.clone(), format!(".localkan/attachments/{file}"))),
                     Err(e) => self.sys(card_id, format!("Không lưu được ảnh {}: {e}", a.name)).await,
                 },
                 Err(e) => self.sys(card_id, format!("Không tải được ảnh {}: {e}", a.name)).await,
@@ -1679,6 +1706,8 @@ impl Engine {
         // Skills added to the board since the task started become available too.
         let _ = self.prepare_skills(&card).await;
         self.sys(&card.card_id, "Gửi yêu cầu sửa cho agent.").await;
+        let wt = card.worktree_path.clone().unwrap_or_default();
+        let images = self.fetch_attachments(&card.card_id, &wt, &p.attachments).await;
         let mut patch = CardStatePatch::new(&card.card_id);
         patch.run_state = Some(RUN_STARTING.into());
         patch.status = Some("in_progress".into());
@@ -1686,7 +1715,8 @@ impl Engine {
         patch.error = Some(None);
         patch.summary = Some(None);
         self.emit(patch).await;
-        let spec = compose_followup(&card.title, &p.text, &card.mode);
+        let text = format!("{}{}", p.text, crate::protocol::images_note(&images));
+        let spec = compose_followup(&card.title, &text, &card.mode);
         let me = self.clone();
         let id = card.card_id.clone();
         tokio::spawn(async move { me.dispatch(&id, spec, terminal, None).await });
@@ -2993,6 +3023,12 @@ fn describe_wait(w: &Value) -> String {
         }
     }
     "Agent đang chờ bạn xác nhận trong terminal.".into()
+}
+
+/// Paths of the images that came with a reopened card's request.
+fn reopen_images(p: &CardStart, fetched: &[(String, String)]) -> Vec<String> {
+    let Some(r) = &p.reopen else { return Vec::new() };
+    fetched.iter().filter(|(id, _)| r.attachment_ids.contains(id)).map(|(_, f)| f.clone()).collect()
 }
 
 /// A request on one line, for a log line.

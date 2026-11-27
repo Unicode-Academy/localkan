@@ -111,11 +111,11 @@ export const api = {
   deleteCard: (id: string) => call('DELETE', `/cards/${id}`),
   start: (id: string) => call<Card>('POST', `/cards/${id}/start`),
   retry: (id: string) => call<Card>('POST', `/cards/${id}/retry`),
-  reopen: (id: string, text: string) => call<Card>('POST', `/cards/${id}/reopen`, { text }),
-  reply: (id: string, r: { messageId?: string; text?: string; keys?: TerminalKey[] }) =>
+  reopen: (id: string, text: string, attachmentIds: string[] = []) => call<Card>('POST', `/cards/${id}/reopen`, { text, attachmentIds }),
+  reply: (id: string, r: { messageId?: string; text?: string; keys?: TerminalKey[]; attachmentIds?: string[] }) =>
     call<Card>('POST', `/cards/${id}/reply`, r),
-  followup: (id: string, text: string, comments: ReviewComment[]) =>
-    call<Card>('POST', `/cards/${id}/followup`, { text, comments }),
+  followup: (id: string, text: string, comments: ReviewComment[], attachmentIds: string[] = []) =>
+    call<Card>('POST', `/cards/${id}/followup`, { text, comments, attachmentIds }),
   diff: (id: string) => call<DiffResult>('GET', `/cards/${id}/diff`),
   screen: (id: string) => call<{ lines: string[] }>('GET', `/cards/${id}/screen`),
   log: (id: string, after?: number) =>
@@ -131,7 +131,8 @@ export const api = {
     const res = await fetch(`/api/cards/${cardId}/attachments`, { method: 'POST', body: form, credentials: 'same-origin' });
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     if (!res.ok) throw new ApiError(res.status, data.error ?? `Lỗi ${res.status}`);
-    return data as Card;
+    // `added`: the ids of the images just uploaded, to send with a request or answer.
+    return data as Card & { added?: string[] };
   },
   deleteAttachment: (id: string) => call<Card>('DELETE', `/attachments/${id}`),
   attachmentUrl: (id: string) => `/api/attachments/${id}`,

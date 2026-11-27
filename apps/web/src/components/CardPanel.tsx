@@ -34,6 +34,7 @@ import { PrPanel, ReposPanel } from './PrPanel.tsx';
 import { RemoteBrowser } from './RemoteBrowser.tsx';
 import { RunBadge } from './RunBadge.tsx';
 import { UsageSection } from './UsageView.tsx';
+import { DraftImages, useImageDraft } from './DraftImages.tsx';
 import { ReopenBox } from './ReopenBox.tsx';
 import type { ToastApi } from './Toasts.tsx';
 import { appendPhrase, VoiceButton } from './VoiceButton.tsx';
@@ -214,13 +215,13 @@ export function CardPanel({
           {tab === 'task' && <TaskTab card={card} cards={cards} models={models} toasts={toasts} />}
           {tab === 'log' && <LogTab log={log} />}
           {tab === 'diff' && <ReviewTab card={card} project={project} toasts={toasts} comments={comments} setComments={setComments} />}
-          {tab === 'terminal' && <TerminalTab card={card} busy={busy} run={run} />}
+          {tab === 'terminal' && <TerminalTab card={card} busy={busy} run={run} toasts={toasts} />}
           {tab === 'preview' && <PreviewTab card={card} toasts={toasts} />}
         </div>
       </div>
 
       {card.status === 'review' && (
-        <ReviewBar card={card} project={project} busy={busy} run={run} comments={comments} setComments={setComments} />
+        <ReviewBar card={card} project={project} busy={busy} run={run} comments={comments} setComments={setComments} toasts={toasts} />
       )}
     </aside>
   );
@@ -244,7 +245,16 @@ export function WaitingBox({
   run: Run;
 }) {
   const [text, setText] = useState('');
+  const images = useImageDraft(toasts.error);
   const w = card.waiting!;
+  // An answer or message with the images picked for it (uploaded first, then sent by id).
+  const answer = (r: { messageId?: string; text?: string }, ok?: string) =>
+    run(async () => {
+      const attachmentIds = await images.upload(card.id);
+      await api.reply(card.id, { ...r, attachmentIds });
+      setText('');
+      images.clear();
+    }, ok);
   if (w.kind === 'login') {
     return (
       <div className="waiting-box login">
@@ -339,7 +349,7 @@ export function WaitingBox({
                 key={o}
                 className="btn"
                 disabled={busy}
-                onClick={() => run(() => api.reply(card.id, { messageId: w.messageId, text: o }), `Đã trả lời: ${o}`)}
+                onClick={() => answer({ messageId: w.messageId, text: o }, `Đã trả lời: ${o}`)}
               >
                 Chọn {o}
               </button>
@@ -349,13 +359,15 @@ export function WaitingBox({
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onPaste={images.onPaste}
           rows={3}
           placeholder={options.length ? 'Hoặc trả lời khác, giải thích thêm…' : 'Câu trả lời của bạn…'}
         />
+        <DraftImages draft={images} onError={toasts.error} disabled={busy} />
         <button
           className="btn primary"
-          disabled={busy || !text.trim()}
-          onClick={() => run(() => api.reply(card.id, { messageId: w.messageId, text }).then(() => setText('')))}
+          disabled={busy || (!text.trim() && !images.files.length)}
+          onClick={() => answer({ messageId: w.messageId, text })}
         >
           Gửi trả lời
         </button>
@@ -364,7 +376,7 @@ export function WaitingBox({
   }
   // Typed into the agent's terminal (with Enter): an answer the menu does not offer, or a
   // message to an agent waiting at its input box.
-  const typeIn = (msg: string) => run(() => api.reply(card.id, { text: msg }).then(() => setText('')), 'Đã gửi cho agent.');
+  const typeIn = (msg: string) => answer({ text: msg }, 'Đã gửi cho agent.');
   if (w.kind === 'idle') {
     return (
       <div className="waiting-box">
@@ -378,8 +390,9 @@ export function WaitingBox({
             <Play /> Tiếp tục
           </button>
         </div>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder="Nhắn cho agent…" />
-        <button className="btn" disabled={busy || !text.trim()} onClick={() => typeIn(text.trim())}>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} onPaste={images.onPaste} rows={2} placeholder="Nhắn cho agent…" />
+        <DraftImages draft={images} onError={toasts.error} disabled={busy} />
+        <button className="btn" disabled={busy || (!text.trim() && !images.files.length)} onClick={() => typeIn(text.trim())}>
           Gửi
         </button>
       </div>
@@ -418,14 +431,16 @@ export function WaitingBox({
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && text.trim() && typeIn(text.trim())}
+          onPaste={images.onPaste}
+          onKeyDown={(e) => e.key === 'Enter' && (text.trim() || images.files.length) && typeIn(text.trim())}
           placeholder="Hoặc gõ trả lời vào terminal…"
           aria-label="Gõ vào terminal của agent"
         />
-        <button className="btn" disabled={busy || !text.trim()} onClick={() => typeIn(text.trim())}>
+        <button className="btn" disabled={busy || (!text.trim() && !images.files.length)} onClick={() => typeIn(text.trim())}>
           Gửi
         </button>
       </div>
+      <DraftImages draft={images} onError={toasts.error} disabled={busy} />
     </div>
   );
 }
@@ -716,6 +731,7 @@ function ReviewBar({
   run,
   comments,
   setComments,
+  toasts,
 }: {
   card: Card;
   project: Project;
@@ -723,8 +739,10 @@ function ReviewBar({
   run: Run;
   comments: ReviewComment[];
   setComments: Dispatch<SetStateAction<ReviewComment[]>>;
+  toasts: ToastApi;
 }) {
   const [feedback, setFeedback] = useState('');
+  const images = useImageDraft(toasts.error);
   const [writing, setWriting] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const note = comments.length ? ` (${comments.length} nhận xét)` : '';
@@ -737,6 +755,7 @@ function ReviewBar({
         onChange={(e) => setFeedback(e.target.value)}
         onFocus={() => setWriting(true)}
         onBlur={() => setWriting(false)}
+        onPaste={images.onPaste}
         rows={writing || feedback ? 3 : 1}
         placeholder={
           comments.length
@@ -753,20 +772,20 @@ function ReviewBar({
       <div className="row">
         <button
           className="btn"
-          disabled={busy || (!feedback.trim() && !comments.length)}
+          disabled={busy || (!feedback.trim() && !comments.length && !images.files.length)}
           onClick={() =>
-            run(
-              () =>
-                api.followup(card.id, feedback, comments).then(() => {
-                  setComments([]);
-                  setFeedback('');
-                }),
-              'Đã gửi yêu cầu sửa cho agent.',
-            )
+            run(async () => {
+              const ids = await images.upload(card.id);
+              await api.followup(card.id, feedback, comments, ids);
+              setComments([]);
+              setFeedback('');
+              images.clear();
+            }, 'Đã gửi yêu cầu sửa cho agent.')
           }
         >
           Yêu cầu sửa{note}
         </button>
+        <DraftImages draft={images} onError={toasts.error} disabled={busy} />
         <div className="spacer" />
         {readOnly ? (
           <button
@@ -867,10 +886,11 @@ export function FinishBox({
   );
 }
 
-function TerminalTab({ card, busy, run }: { card: Card; busy: boolean; run: Run }) {
+function TerminalTab({ card, busy, run, toasts }: { card: Card; busy: boolean; run: Run; toasts: ToastApi }) {
   const [lines, setLines] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
+  const images = useImageDraft(toasts.error);
   const [auto, setAuto] = useState(true);
 
   const load = useCallback(() => {
@@ -906,14 +926,20 @@ function TerminalTab({ card, busy, run }: { card: Card; busy: boolean; run: Run 
         className="row"
         onSubmit={(e) => {
           e.preventDefault();
-          run(() => api.reply(card.id, { text }).then(() => setText('')));
+          run(async () => {
+            const attachmentIds = await images.upload(card.id);
+            await api.reply(card.id, { text, attachmentIds });
+            setText('');
+            images.clear();
+          });
         }}
       >
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Gõ vào terminal của agent rồi Enter…" />
-        <button className="btn" disabled={busy || !text}>
+        <input value={text} onChange={(e) => setText(e.target.value)} onPaste={images.onPaste} placeholder="Gõ vào terminal của agent rồi Enter…" />
+        <button className="btn" disabled={busy || (!text && !images.files.length)}>
           Gửi
         </button>
       </form>
+      <DraftImages draft={images} onError={toasts.error} disabled={busy} />
       <div className="row wrap">
         <button className="btn ghost small" disabled={busy} onClick={() => run(() => api.reply(card.id, { keys: ['enter'] }))}>
           Enter

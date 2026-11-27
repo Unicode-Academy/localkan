@@ -188,7 +188,10 @@ export interface Attachment {
 }
 
 export const ATTACHMENT_LIMITS = {
+  /** Images per upload: one new task, one request or one answer to the agent. */
   maxFiles: 10,
+  /** Images a card can collect over its requests and answers. */
+  maxPerCard: 40,
   maxBytes: 10 * 1024 * 1024,
   mimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
 } as const;
@@ -569,7 +572,7 @@ export interface BridgeMethods {
       /** Start Claude without the global MCP servers and plugins. */
       lean: boolean;
       /** A finished card opened again: its round (2, 3…) and the follow-up request. */
-      reopen?: { round: number; request: string };
+      reopen?: { round: number; request: string; attachmentIds?: string[] };
       mode: CardMode;
       /** Images to copy into the worktree; the bridge downloads them from the server. */
       attachments: Pick<Attachment, 'id' | 'name' | 'mime'>[];
@@ -609,7 +612,14 @@ export interface BridgeMethods {
   'fs.inspect': { params: { path: string }; result: FolderInfo };
   /** Answer a waiting card: a text reply to an Orca question, or raw input to the terminal. */
   'card.reply': {
-    params: { cardId: string; messageId?: string; text?: string; keys?: TerminalKey[] };
+    params: {
+      cardId: string;
+      messageId?: string;
+      text?: string;
+      keys?: TerminalKey[];
+      /** Images sent with the answer or message (the bridge copies them in and adds the paths). */
+      attachments?: Pick<Attachment, 'id' | 'name' | 'mime'>[];
+    };
     result: { ok: true };
   };
   /** Run the card's task again from the beginning in its worktree (fresh agent). */
@@ -619,7 +629,7 @@ export interface BridgeMethods {
   };
   /** Send follow-up work (e.g. review comments) to the same agent and worktree. */
   'card.followup': {
-    params: { cardId: string; text: string };
+    params: { cardId: string; text: string; attachments?: Pick<Attachment, 'id' | 'name' | 'mime'>[] };
     result: { accepted: true };
   };
   'card.diff': { params: { cardId: string }; result: DiffResult };

@@ -16,7 +16,7 @@ export function acceptImages(files: File[], alreadyCount: number): { ok: File[];
       return { ok, error: `"${f.name}" lớn hơn ${ATTACHMENT_LIMITS.maxBytes / 1024 / 1024} MB.` };
     }
     if (alreadyCount + ok.length >= ATTACHMENT_LIMITS.maxFiles) {
-      return { ok, error: `Mỗi thẻ tối đa ${ATTACHMENT_LIMITS.maxFiles} ảnh.` };
+      return { ok, error: `Mỗi lần gửi tối đa ${ATTACHMENT_LIMITS.maxFiles} ảnh.` };
     }
     ok.push(f);
   }
@@ -49,7 +49,10 @@ export function ImageAttachments({
   onRemovePending,
   onError,
   disabled = false,
+  compact = false,
 }: {
+  /** A message's images: a small add button, no hint text. */
+  compact?: boolean;
   existing?: Attachment[];
   pending?: File[];
   onAdd?: (files: File[]) => void;
@@ -119,9 +122,13 @@ export function ImageAttachments({
           <button type="button" className="btn ghost small" onClick={() => input.current?.click()}>
             <ImagePlus /> Thêm ảnh
           </button>
-          <span className="muted small">
-            <span className="pointer-only">hoặc kéo thả, hoặc dán (⌘V) ảnh chụp màn hình · </span>tối đa {ATTACHMENT_LIMITS.maxFiles} ảnh
-          </span>
+          {compact ? (
+            <span className="muted small pointer-only">hoặc dán (⌘V) vào ô chữ</span>
+          ) : (
+            <span className="muted small">
+              <span className="pointer-only">hoặc kéo thả, hoặc dán (⌘V) ảnh chụp màn hình · </span>tối đa {ATTACHMENT_LIMITS.maxFiles} ảnh
+            </span>
+          )}
           <input
             ref={input}
             type="file"

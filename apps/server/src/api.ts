@@ -455,6 +455,12 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
     return parentId;
   };
 
+  /** The card's images among `ids` (uploaded to it before the request or answer they go with). */
+  const attachmentRefs = (card: Card, ids: unknown) => {
+    const wanted = new Set(Array.isArray(ids) ? ids.map(String) : []);
+    return card.attachments.filter((a) => wanted.has(a.id)).map(({ id, name, mime }) => ({ id, name, mime }));
+  };
+
   const parentRef = async (card: Card) => {
     if (!card.parentCardId) return null;
     const r = await store.cardBrief(card.parentCardId);
@@ -634,15 +640,17 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
   // Images ------------------------------------------------------------------
 
   api.post('/cards/:id/attachments', async (c) => {
+    // Any time: a new task's images, or images for a request or answer to the agent (sent with
+    // it by id, see `attachmentRefs`).
     const { card, userId } = await ownCard(c, c.req.param('id'));
-    if (card.status !== 'todo') throw new HttpError(409, 'Chỉ thêm ảnh được khi thẻ còn ở To Do.');
     const form = await c.req.formData().catch(() => {
       throw new HttpError(400, 'Dữ liệu ảnh không hợp lệ.');
     });
     const files = form.getAll('files').filter((f): f is File => typeof f === 'object' && f !== null && 'arrayBuffer' in f);
     if (!files.length) throw new HttpError(400, 'Chưa có ảnh nào.');
-    if (card.attachments.length + files.length > ATTACHMENT_LIMITS.maxFiles)
-      throw new HttpError(400, `Mỗi thẻ tối đa ${ATTACHMENT_LIMITS.maxFiles} ảnh.`);
+    if (files.length > ATTACHMENT_LIMITS.maxFiles) throw new HttpError(400, `Mỗi lần tối đa ${ATTACHMENT_LIMITS.maxFiles} ảnh.`);
+    if (card.attachments.length + files.length > ATTACHMENT_LIMITS.maxPerCard)
+      throw new HttpError(400, `Thẻ đã có ${card.attachments.length} ảnh; mỗi thẻ tối đa ${ATTACHMENT_LIMITS.maxPerCard} ảnh.`);
     for (const f of files) {
       if (!(ATTACHMENT_LIMITS.mimeTypes as readonly string[]).includes(f.type))
         throw new HttpError(400, `"${f.name}" không phải ảnh PNG, JPEG, WebP hoặc GIF.`);
@@ -657,7 +665,8 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
       const name = (f.name || `anh-${card.attachments.length + i + 1}`).replace(/[\\/\x00-\x1f]/g, '_').slice(0, 120);
       items.push({ id, name, mime: f.type, size: f.size });
     }
-    return c.json(pushCard(userId, await store.addAttachments(card.id, items)));
+    const updated = pushCard(userId, await store.addAttachments(card.id, items));
+    return c.json({ ...updated, added: items.map((i) => i.id) });
   });
 
   api.get('/attachments/:id', async (c) => {
@@ -713,8 +722,9 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
   api.post('/cards/:id/reopen', async (c) => {
     const { card, deviceId, repoPath, userId } = await ownCard(c, c.req.param('id'));
     if (card.status !== 'done') throw new HttpError(409, 'Chỉ mở lại được thẻ đã hoàn tất.');
-    const b = await body<{ text?: unknown }>(c);
-    const request = String(b.text ?? '').trim().slice(0, 20000);
+    const b = await body<{ text?: unknown; attachmentIds?: string[] }>(c);
+    const sent = attachmentRefs(card, b.attachmentIds);
+    const request = String(b.text ?? '').trim().slice(0, 20000) || (sent.length ? 'Xem ảnh đính kèm.' : '');
     if (!request) throw new HttpError(400, 'Hãy viết yêu cầu bổ sung cho agent.');
     const project = await ownProject(c, card.projectId);
     if (project.status !== 'ready') throw new HttpError(409, 'Bảng chưa sẵn sàng (repo chưa được đăng ký với Orca).');
@@ -749,7 +759,7 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
         parent: { cardId: card.id, title: card.title, branch: card.branch },
         git: project.git,
         repoGit: project.repoGit,
-        reopen: { round: reopens + 1, request },
+        reopen: { round: reopens + 1, request, attachmentIds: sent.map((a) => a.id) },
       });
     } catch (err) {
       pushCard(userId, await store.updateCard(card.id, { status: 'done', runState: 'idle', error: (err as Error).message, usageBase: null }));
@@ -794,19 +804,21 @@ export function createApi(store: Store, hub: Hub, opts: { secureCookies: boolean
 
   api.post('/cards/:id/reply', async (c) => {
     const { card, deviceId, userId } = await ownCard(c, c.req.param('id'));
-    const b = await body<{ messageId?: string; text?: string; keys?: TerminalKey[] }>(c);
-    await hub.request(deviceId, 'card.reply', { cardId: card.id, messageId: b.messageId, text: b.text, keys: b.keys });
+    const b = await body<{ messageId?: string; text?: string; keys?: TerminalKey[]; attachmentIds?: string[] }>(c);
+    const attachments = attachmentRefs(card, b.attachmentIds);
+    await hub.request(deviceId, 'card.reply', { cardId: card.id, messageId: b.messageId, text: b.text, keys: b.keys, attachments });
     return c.json(pushCard(userId, await store.updateCard(card.id, {})));
   });
 
   api.post('/cards/:id/followup', async (c) => {
     const { card, deviceId, userId } = await ownCard(c, c.req.param('id'));
-    const b = await body<{ text?: string; comments?: ReviewComment[] }>(c);
-    const text = composeFollowup(b.text ?? '', b.comments ?? []);
+    const b = await body<{ text?: string; comments?: ReviewComment[]; attachmentIds?: string[] }>(c);
+    const attachments = attachmentRefs(card, b.attachmentIds);
+    const text = composeFollowup(b.text ?? '', b.comments ?? []) || (attachments.length ? 'Xem ảnh đính kèm.' : '');
     if (!text) throw new HttpError(400, 'Hãy viết nhận xét hoặc yêu cầu sửa.');
     pushCard(userId, await store.updateCard(card.id, { status: 'in_progress', runState: 'starting', error: null }));
     try {
-      await hub.request(deviceId, 'card.followup', { cardId: card.id, text });
+      await hub.request(deviceId, 'card.followup', { cardId: card.id, text, attachments });
     } catch (err) {
       pushCard(userId, await store.updateCard(card.id, { status: card.status, runState: card.runState, error: (err as Error).message }));
       throw err;
