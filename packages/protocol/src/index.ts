@@ -160,12 +160,14 @@ export interface WaitingInfo {
    *  `login`: a page in the shared browser needs a sign-in; the human signs in remotely
    *  (Localkan types into the browser, the agent never sees the password), then replies.
    *  `limit`: the agent stopped on its usage limit; it goes on when told to (automatically at
-   *  `resumeAt` when the reset time is known). */
-  kind: 'question' | 'prompt' | 'setup' | 'login' | 'limit';
+   *  `resumeAt` when the reset time is known).
+   *  `idle`: the agent has sat at its input box for a while with no choice menu on screen: it
+   *  wants a typed message (it may have asked something in its terminal). */
+  kind: 'question' | 'prompt' | 'setup' | 'login' | 'limit' | 'idle';
   text: string;
   /** Orca message id to reply to (kind = question | login). */
   messageId?: string;
-  /** Rendered terminal screen at the time the wait was detected (kind = prompt). */
+  /** Rendered terminal screen at the time the wait was detected (kind = prompt | idle). */
   screen?: string[];
   /** Shared-browser tab that needs the sign-in (kind = login). */
   pageId?: string;

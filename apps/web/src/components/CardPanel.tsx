@@ -359,6 +359,29 @@ export function WaitingBox({
       </div>
     );
   }
+  // Typed into the agent's terminal (with Enter): an answer the menu does not offer, or a
+  // message to an agent waiting at its input box.
+  const typeIn = (msg: string) => run(() => api.reply(card.id, { text: msg }).then(() => setText('')), 'Đã gửi cho agent.');
+  if (w.kind === 'idle') {
+    return (
+      <div className="waiting-box">
+        <div className="waiting-title">Agent dừng lại, chờ bạn nhắn</div>
+        <p className="waiting-text small">
+          Agent không làm thêm bước nào và đang đứng ở ô nhập của nó. Xem màn hình bên dưới: nếu nó hỏi gì thì trả lời, còn không thì bấm Tiếp tục.
+        </p>
+        {w.screen && <pre className="screen">{w.screen.join('\n')}</pre>}
+        <div className="row wrap">
+          <button className="btn primary" disabled={busy} onClick={() => typeIn('Tiếp tục')}>
+            <Play /> Tiếp tục
+          </button>
+        </div>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder="Nhắn cho agent…" />
+        <button className="btn" disabled={busy || !text.trim()} onClick={() => typeIn(text.trim())}>
+          Gửi
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="waiting-box">
       <div className="waiting-title">Agent đang chờ xác nhận trong terminal</div>
@@ -387,6 +410,18 @@ export function WaitingBox({
           Esc
         </button>
         <KeyButtons card={card} busy={busy} run={run} />
+      </div>
+      <div className="row">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && text.trim() && typeIn(text.trim())}
+          placeholder="Hoặc gõ trả lời vào terminal…"
+          aria-label="Gõ vào terminal của agent"
+        />
+        <button className="btn" disabled={busy || !text.trim()} onClick={() => typeIn(text.trim())}>
+          Gửi
+        </button>
       </div>
     </div>
   );

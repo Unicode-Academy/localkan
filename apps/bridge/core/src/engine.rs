@@ -35,6 +35,10 @@ const RUN_FAILED: &str = "failed";
 const RUN_STOPPED: &str = "stopped";
 /// Ticks (2 s each) between reads of what active cards' agents spent.
 const USAGE_EVERY: u64 = 15;
+/// An agent parked at its input box (no choice menu) is often only between steps, waiting on
+/// a background command; Orca reports that as a wait too. Ask the human only after this long
+/// with no new step.
+const IDLE_ASK_SECS: i64 = 90;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -84,6 +88,10 @@ pub struct CardRt {
     /// How far the agent's session files have been read for the activity log (path -> bytes).
     #[serde(default)]
     pub activity: HashMap<String, u64>,
+    /// Since when Orca has seen the agent parked at its input box with no choice menu on
+    /// screen (Unix seconds); the human is asked only when that lasts (see IDLE_ASK_SECS).
+    #[serde(default)]
+    pub idle_since: Option<i64>,
     pub mode: String,
     pub worktree_path: Option<String>,
     pub branch: Option<String>,
@@ -1034,14 +1042,9 @@ impl Engine {
                 me.sys(&id, "Thử giao việc lại cho agent…").await;
                 me.dispatch(&id, String::new(), None, Some(retry)).await;
             });
-        } else if card.waiting_kind.as_deref() == Some("prompt") {
+        } else if matches!(card.waiting_kind.as_deref(), Some("prompt" | "idle")) {
             // Optimistically clear; the next observation re-raises it if the agent still waits.
-            self.update_card(&card.card_id, |c| c.waiting_kind = None).await;
-            let mut patch = CardStatePatch::new(&card.card_id);
-            patch.run_state = Some(RUN_RUNNING.into());
-            patch.status = Some("in_progress".into());
-            patch.waiting = Some(None);
-            self.emit(patch).await;
+            self.resume_from_wait(&card.card_id).await;
         }
         Ok(json!({ "ok": true }))
     }
@@ -1570,6 +1573,11 @@ impl Engine {
     /// highlight with arrow keys, then confirm. Falls back to Enter / Esc.
     async fn choose_option(&self, term: &str, approve: bool) -> Result<()> {
         let lines = self.screen_of(term).await.unwrap_or_default();
+        if !lines.is_empty() && !has_choice_menu(&lines) {
+            // The prompt is gone (answered, or the agent went on): a stray Enter or Esc would
+            // land in the agent's input instead.
+            return Ok(());
+        }
         let plan = plan_choice(&lines, approve);
         let orca = self.orca()?;
         match plan {
@@ -2313,6 +2321,14 @@ impl Engine {
         }
         if !lines.is_empty() {
             self.log(card_id, "activity", lines).await;
+            // New steps: the agent is working, not waiting on the human.
+            if card.idle_since.is_some() || card.waiting_kind.as_deref() == Some("idle") {
+                if card.waiting_kind.as_deref() == Some("idle") {
+                    self.resume_from_wait(card_id).await;
+                } else {
+                    self.update_card(card_id, |c| c.idle_since = None).await;
+                }
+            }
         }
     }
 
@@ -2688,31 +2704,70 @@ impl Engine {
             .find(|v| v.is_object())
             .cloned();
         match (wait, card.waiting_kind.as_deref()) {
-            (Some(w), None) => {
+            (Some(w), None | Some("idle")) => {
                 let screen = match term.as_deref().or(card.agent_terminal.as_deref()) {
                     Some(t) => self.screen_of(t).await,
                     None => None,
                 };
-                self.update_card(card_id, |c| c.waiting_kind = Some("prompt".into())).await;
-                let text = describe_wait(&w);
-                self.sys(card_id, format!("Agent đang chờ: {text}")).await;
-                let mut patch = CardStatePatch::new(card_id);
-                patch.run_state = Some(RUN_WAITING.into());
-                patch.status = Some("needs_input".into());
-                patch.waiting = Some(Some(WaitingInfo { kind: "prompt".into(), text, message_id: None, screen, ..Default::default() }));
-                self.emit(patch).await;
+                // A choice menu on screen (permission, trust…) needs the human now. Without one
+                // the agent sits at its input box: maybe only until a background command ends.
+                let menu = screen.as_deref().is_none_or(has_choice_menu);
+                if menu {
+                    self.update_card(card_id, |c| {
+                        c.waiting_kind = Some("prompt".into());
+                        c.idle_since = None;
+                    })
+                    .await;
+                    let text = describe_wait(&w);
+                    self.sys(card_id, format!("Agent đang chờ: {text}")).await;
+                    let mut patch = CardStatePatch::new(card_id);
+                    patch.run_state = Some(RUN_WAITING.into());
+                    patch.status = Some("needs_input".into());
+                    patch.waiting = Some(Some(WaitingInfo { kind: "prompt".into(), text, message_id: None, screen, ..Default::default() }));
+                    self.emit(patch).await;
+                    return Ok(());
+                }
+                if card.waiting_kind.is_some() {
+                    return Ok(());
+                }
+                let now = chrono::Local::now().timestamp();
+                let busy = screen.as_deref().is_some_and(agent_busy);
+                let since = if busy { None } else { Some(card.idle_since.unwrap_or(now)) };
+                if since != card.idle_since {
+                    self.update_card(card_id, |c| c.idle_since = since).await;
+                }
+                if since.is_some_and(|t| now - t >= IDLE_ASK_SECS) {
+                    self.update_card(card_id, |c| c.waiting_kind = Some("idle".into())).await;
+                    let text = "Agent đã dừng ở ô nhập và chờ bạn nhắn (có thể nó vừa hỏi gì đó trong terminal).".to_string();
+                    self.sys(card_id, text.clone()).await;
+                    let mut patch = CardStatePatch::new(card_id);
+                    patch.run_state = Some(RUN_WAITING.into());
+                    patch.status = Some("needs_input".into());
+                    patch.waiting = Some(Some(WaitingInfo { kind: "idle".into(), text, message_id: None, screen, ..Default::default() }));
+                    self.emit(patch).await;
+                }
             }
-            (None, Some("prompt")) => {
-                self.update_card(card_id, |c| c.waiting_kind = None).await;
-                let mut patch = CardStatePatch::new(card_id);
-                patch.run_state = Some(RUN_RUNNING.into());
-                patch.status = Some("in_progress".into());
-                patch.waiting = Some(None);
-                self.emit(patch).await;
+            (None, Some("prompt" | "idle")) => self.resume_from_wait(card_id).await,
+            (None, None) if card.idle_since.is_some() => {
+                self.update_card(card_id, |c| c.idle_since = None).await;
             }
             _ => {}
         }
         Ok(())
+    }
+
+    /// The agent works again after a wait (prompt answered, or it went on by itself).
+    async fn resume_from_wait(&self, card_id: &str) {
+        self.update_card(card_id, |c| {
+            c.waiting_kind = None;
+            c.idle_since = None;
+        })
+        .await;
+        let mut patch = CardStatePatch::new(card_id);
+        patch.run_state = Some(RUN_RUNNING.into());
+        patch.status = Some("in_progress".into());
+        patch.waiting = Some(None);
+        self.emit(patch).await;
     }
 }
 
@@ -2883,6 +2938,48 @@ fn project_key(project_id: &str) -> String {
     format!("project-{project_id}")
 }
 
+/// A choice menu on the agent's screen (permission, folder trust…): the highlighted line is an
+/// option (`❯ 1. Yes`, `› No, exit`) with another option next to it. An agent parked at its
+/// input box (`❯` with nothing, or a draft, after it) shows none.
+fn has_choice_menu(lines: &[String]) -> bool {
+    let tail: Vec<&str> = {
+        let mut v: Vec<&str> = lines.iter().rev().map(|l| l.as_str()).filter(|l| !l.trim().is_empty()).take(30).collect();
+        v.reverse();
+        v
+    };
+    const WORDS: [&str; 17] = [
+        "yes", "allow", "trust", "approve", "accept", "proceed", "continue", "no", "deny", "reject", "exit", "cancel", "don't", "đồng ý",
+        "có", "không", "từ chối",
+    ];
+    let option = |s: &str| {
+        let t = s.trim_start().trim_start_matches(['❯', '>', '›', '▸', '●', '○', '◯', '*']).trim_start();
+        let digits = t.trim_start_matches(|c: char| c.is_ascii_digit());
+        let numbered = digits.len() < t.len() && digits.starts_with(['.', ')']);
+        let rest = digits.trim_start_matches(['.', ')']).trim_start().to_lowercase();
+        !rest.is_empty() && (numbered || WORDS.iter().any(|w| rest.starts_with(w)))
+    };
+    let marked = |s: &str| {
+        let t = s.trim_start();
+        t.starts_with('❯') || t.starts_with('›') || t.starts_with("> ")
+    };
+    tail.iter().enumerate().any(|(i, l)| {
+        marked(l) && option(l) && tail.iter().enumerate().any(|(j, m)| j != i && j.abs_diff(i) <= 6 && option(m))
+    })
+}
+
+/// The agent's screen says it is still at work: a turn in progress, or commands running in the
+/// background that it will come back to.
+fn agent_busy(lines: &[String]) -> bool {
+    use std::sync::OnceLock;
+    // Claude Code's status line counts running background shells: "· 1 shell ·", "2 shells".
+    static SHELLS: OnceLock<regex::Regex> = OnceLock::new();
+    let shells = SHELLS.get_or_init(|| regex::Regex::new(r"(?i)\b\d+ (background )?(shells?|tasks?)\b").expect("regex"));
+    let tail: Vec<String> = lines.iter().rev().filter(|l| !l.trim().is_empty()).take(6).map(|l| l.to_lowercase()).collect();
+    tail.iter().any(|t| t.contains("esc to interrupt") || t.contains("running in background") || t.contains("background task"))
+        // Only the status line itself: the agent's own text above can say "ran 6 shell commands".
+        || tail.iter().take(2).any(|t| shells.is_match(t))
+}
+
 fn describe_wait(w: &Value) -> String {
     for key in ["prompt", "text", "question", "summary", "reason", "kind"] {
         if let Some(t) = w[key].as_str().filter(|t| !t.is_empty()) {
@@ -3038,6 +3135,57 @@ mod tests {
             classify_startup(&v(&["  ❯ No, exit", "    Yes, I accept", "  Enter to confirm · Esc to cancel", "admin@Mac wt %"])),
             Startup::Exited
         );
+    }
+
+    #[test]
+    fn tells_menus_from_an_idle_input_box() {
+        let lines = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // Claude Code permission prompt and folder-trust dialog.
+        assert!(has_choice_menu(&lines(&["Do you want to proceed?", "❯ 1. Yes", "  2. Yes, and don't ask again", "  3. No, and tell Claude what to do differently"])));
+        assert!(has_choice_menu(&lines(&["Is this a project you trust?", " ❯ No, exit", "   Yes, I trust this folder", " Enter to confirm · Esc to cancel"])));
+        // Codex approval and agy trust prompt.
+        assert!(has_choice_menu(&lines(&["Allow command?", "› 1. Yes, proceed (y)", "  2. No, and tell Codex what to do differently (esc)"])));
+        assert!(has_choice_menu(&lines(&["Do you trust the contents of this project?", "> Yes, I trust this folder", "  No, exit"])));
+        // Parked at the input box, even right under a numbered list the agent wrote.
+        let idle = lines(&[
+            "⏺ Kết quả backtest:",
+            "  1. Nến ngày: Sharpe 1.4",
+            "  2. Nến 1 giờ: Sharpe 0.9",
+            "Bạn muốn dùng nến nào?",
+            "╭────────────────────────────╮",
+            "│ ❯                          │",
+            "╰────────────────────────────╯",
+            "  ⏵⏵ bypass permissions on",
+        ]);
+        assert!(!has_choice_menu(&idle));
+        assert!(!has_choice_menu(&lines(&["❯ "])));
+        // Working, or waiting on background commands: not the human's turn.
+        assert!(agent_busy(&lines(&["✻ Running… (esc to interrupt)"])));
+        assert!(agent_busy(&lines(&["❯", "  2 background tasks · ↓ to view"])));
+        assert!(!agent_busy(&idle));
+        // Real Claude Code screens (2026-11-27): interrupted and waiting for the human; at work
+        // with a background shell; turn over but a background shell still running.
+        let interrupted = lines(&[
+            "  Ran 6 shell commands",
+            "⏺ Frontend: chặn autofill và yêu cầu nhập đủ 3 ô khi đổi API Key.",
+            "  ⎿  Interrupted · What should Claude do instead?",
+            "────────────────────────────────────────",
+            "❯",
+            "────────────────────────────────────────",
+            "  ⏵⏵ bypass permissions on (shift+tab to cycle)",
+        ]);
+        assert!(!has_choice_menu(&interrupted) && !agent_busy(&interrupted));
+        let working = lines(&[
+            "✢ Cultivating… (33m 5s · ↓ 179.0k tokens · still thinking with high effort)",
+            "  ⎿  Tip: Use /btw to ask a side question without interrupting Claude",
+            "────────────────────────────────────────",
+            "❯",
+            "────────────────────────────────────────",
+            "  ⏵⏵ bypass permissions on · 1 shell · esc to interrupt · ↓ to manage",
+        ]);
+        assert!(!has_choice_menu(&working) && agent_busy(&working));
+        let waiting_on_shell = lines(&["⏺ Đang chờ backtest chạy xong.", "❯", "  ⏵⏵ bypass permissions on · 1 shell · ↓ to manage"]);
+        assert!(agent_busy(&waiting_on_shell));
     }
 
     #[test]

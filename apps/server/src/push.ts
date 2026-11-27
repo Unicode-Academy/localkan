@@ -281,7 +281,9 @@ export function cardPayload(event: CardEventName, card: Card, projectName: strin
           ? '⚙ Cần thiết lập'
           : w?.kind === 'limit'
             ? '⏳ Hết hạn mức'
-            : '⏸ Cần xác nhận';
+            : w?.kind === 'idle'
+              ? '💬 Agent chờ bạn nhắn'
+              : '⏸ Cần xác nhận';
   return { ...base, title: `${head}: ${card.title}`, body: clip(w?.text ? `${where} — ${w.text}` : where) };
 }
 

@@ -286,7 +286,12 @@ function TaskItem({
             <Play aria-hidden /> Làm tiếp
           </button>
         )}
-        {(w?.kind === 'prompt' || w?.kind === 'setup') && (
+        {w?.kind === 'idle' && (
+          <button className="m-btn" disabled={busy} onClick={() => run(() => api.reply(card.id, { text: 'Tiếp tục' }), 'Đã nhắc agent tiếp tục.')}>
+            <Play aria-hidden /> Tiếp tục
+          </button>
+        )}
+        {(w?.kind === 'prompt' || w?.kind === 'setup' || w?.kind === 'idle') && (
           <button className="m-btn primary" onClick={() => open()}>
             Xem và trả lời
           </button>

@@ -1,5 +1,5 @@
 import type { Card } from '@localkan/protocol';
-import { Circle, CircleAlert, CircleCheck, CircleStop, Eye, Hourglass, KeyRound, LoaderCircle, MessageCircleQuestion, Settings, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { Circle, CircleAlert, CircleCheck, CircleStop, Eye, Hourglass, KeyRound, LoaderCircle, MessageCircle, MessageCircleQuestion, Settings, TriangleAlert, type LucideIcon } from 'lucide-react';
 
 /** Where a card sits from the phone's point of view. */
 export type Bucket = 'you' | 'running' | 'failed' | 'todo' | 'done';
@@ -54,6 +54,8 @@ export function badge(c: Card): { label: string; tone: Tone; Icon: LucideIcon } 
           return { label: 'Cần thiết lập', tone: 'warn', Icon: Settings };
         case 'limit':
           return { label: 'Hết hạn mức', tone: 'warn', Icon: Hourglass };
+        case 'idle':
+          return { label: 'Chờ bạn nhắn', tone: 'warn', Icon: MessageCircle };
         default:
           return { label: 'Cần xác nhận', tone: 'warn', Icon: CircleAlert };
       }
